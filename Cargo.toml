@@ -8,11 +8,12 @@ edition = "2021"
 [dependencies]
 bevy = "0.10"
 bevy_rapier3d = { version = "0.21", features = ["simd-stable", "debug-render"] }
-smooth-bevy-cameras = "0.8.0"
+smooth-bevy-cameras = "0.8"
 bevy_prototype_debug_lines = { version = "0.10", features = ["3d"] }
 # bevy_mod_picking = "0.11.0"
 bevy_mod_picking = { git = "https://github.com/Fincap/bevy_mod_picking", branch = "migrate-bevy-0.10.0" }
-bevy-inspector-egui = "0.18.1"
+bevy-inspector-egui = "0.18"
+bevy_obj = "0.10.0"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

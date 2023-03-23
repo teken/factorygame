@@ -1,3 +1,5 @@
+use std::{default, f32::consts::PI};
+
 use bevy::{
     input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
@@ -6,28 +8,65 @@ use bevy::{
 
 use bevy_mod_picking::PickingCameraBundle;
 
-pub struct PanOrbitCameraPlugin;
+use crate::blocks::BlockType;
 
-impl Plugin for PanOrbitCameraPlugin {
+pub struct PlayerPlugin;
+
+impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(spawn_camera);
-        app.add_system(pan_orbit_camera);
+        app.add_startup_system(spawn_player);
+        app.add_startup_system(setup_hud);
+        app.add_system(player_controller);
+        app.add_system(player_inventory_hotkeys);
+    }
+}
+
+#[derive(Component)]
+pub struct Player {}
+
+#[derive(Component, Default)]
+pub struct SpawnerOptions {
+    pub block_selection: Option<BlockType>,
+    pub block_rotation: Direction,
+}
+
+#[derive(Default)]
+pub enum Direction {
+    #[default]
+    North,
+    East,
+    South,
+    West,
+    Up,
+    Down,
+}
+
+impl Direction {
+    pub fn to_quat(&self) -> Quat {
+        match self {
+            Direction::North => Quat::from_rotation_x(0.0),
+            Direction::East => Quat::from_rotation_z(0.0),
+            Direction::South => Quat::from_rotation_x(PI),
+            Direction::West => Quat::from_rotation_z(PI),
+            Direction::Up => Quat::from_rotation_y(0.0),
+            Direction::Down => Quat::from_rotation_y(PI),
+        }
     }
 }
 
 /// Tags an entity as capable of panning and orbiting.
 #[derive(Reflect, Component)]
 #[reflect(Component)]
-pub struct PanOrbitCamera {
+pub struct PlayerPluginCamera {
     /// The "focus point" to orbit around. It is automatically updated when panning the camera
     pub focus: Vec3,
     pub radius: f32,
     pub upside_down: bool,
 }
 
-impl Default for PanOrbitCamera {
+impl Default for PlayerPluginCamera {
     fn default() -> Self {
-        PanOrbitCamera {
+        PlayerPluginCamera {
             focus: Vec3::ZERO,
             radius: 5.0,
             upside_down: false,
@@ -36,12 +75,12 @@ impl Default for PanOrbitCamera {
 }
 
 /// Pan the camera with middle mouse click, zoom with scroll wheel, orbit with right mouse click.
-fn pan_orbit_camera(
+fn player_controller(
     mut ev_motion: EventReader<MouseMotion>,
     mut ev_scroll: EventReader<MouseWheel>,
     input_mouse: Res<Input<MouseButton>>,
     keys: Res<Input<KeyCode>>,
-    mut query: Query<(&mut PanOrbitCamera, &mut Transform, &Projection)>,
+    mut query: Query<(&mut PlayerPluginCamera, &mut Transform, &Projection), With<Player>>,
     primary_query: Query<&Window, With<PrimaryWindow>>,
 ) {
     // change input mapping for orbit and panning here
@@ -141,19 +180,129 @@ fn get_primary_window_size(window: &Window) -> Vec2 {
 }
 
 /// Spawn a camera like this
-fn spawn_camera(mut commands: Commands) {
+fn spawn_player(mut commands: Commands) {
     let translation = Vec3::new(-2.0, 2.5, 5.0);
     let radius = translation.length();
 
     commands.spawn((
+        Name::new("Player"),
+        Player {},
+        SpawnerOptions::default(),
         Camera3dBundle {
             transform: Transform::from_translation(translation).looking_at(Vec3::ZERO, Vec3::Y),
             ..Default::default()
         },
-        PanOrbitCamera {
+        PlayerPluginCamera {
             radius,
             ..Default::default()
         },
         PickingCameraBundle::default(),
     ));
+}
+
+const ALIGN_ITEMS_COLOR: Color = Color::rgb(1., 0.066, 0.349);
+const JUSTIFY_CONTENT_COLOR: Color = Color::rgb(0.102, 0.522, 1.);
+const MARGIN: Val = Val::Px(5.);
+
+#[derive(Component)]
+pub struct UICamera;
+
+fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let font = asset_server.load("fonts/FiraSans-Bold.ttf");
+    commands
+        .spawn((
+            Name::new("Player UI"),
+            NodeBundle {
+                style: Style {
+                    // fill the entire window
+                    size: Size::all(Val::Percent(100.)),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    ..Default::default()
+                },
+                background_color: BackgroundColor(Color::NONE),
+                ..Default::default()
+            },
+        ))
+        .with_children(|builder| {
+            // spawn the key
+            builder
+                .spawn(NodeBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Row,
+                        margin: UiRect::top(MARGIN),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .with_children(|builder| {
+                    spawn_nested_text_bundle(
+                        builder,
+                        font.clone(),
+                        ALIGN_ITEMS_COLOR,
+                        UiRect::right(MARGIN),
+                        "AlignItems",
+                    );
+                    spawn_nested_text_bundle(
+                        builder,
+                        font,
+                        JUSTIFY_CONTENT_COLOR,
+                        UiRect::default(),
+                        "JustifyContent",
+                    );
+                });
+        });
+}
+
+fn spawn_nested_text_bundle(
+    builder: &mut ChildBuilder,
+    font: Handle<Font>,
+    background_color: Color,
+    margin: UiRect,
+    text: &str,
+) {
+    builder
+        .spawn(NodeBundle {
+            style: Style {
+                margin,
+                padding: UiRect {
+                    top: Val::Px(1.),
+                    left: Val::Px(5.),
+                    right: Val::Px(5.),
+                    bottom: Val::Px(1.),
+                },
+                ..Default::default()
+            },
+            background_color: BackgroundColor(background_color),
+            ..Default::default()
+        })
+        .with_children(|builder| {
+            builder.spawn(TextBundle::from_section(
+                text,
+                TextStyle {
+                    font,
+                    font_size: 24.0,
+                    color: Color::BLACK,
+                },
+            ));
+        });
+}
+
+fn player_inventory_hotkeys(
+    keys: Res<Input<KeyCode>>,
+    mut query: Query<&mut SpawnerOptions, With<Player>>,
+) {
+    for mut ele in query.iter_mut() {
+        if keys.just_pressed(KeyCode::Key1) {
+            ele.block_selection = Some(BlockType::Debug);
+        } else if keys.just_pressed(KeyCode::Key2) {
+            ele.block_selection = Some(BlockType::Furnace);
+        } else if keys.just_pressed(KeyCode::Key3) {
+            ele.block_selection = Some(BlockType::Conveyor);
+        } else if keys.just_pressed(KeyCode::Key4) {
+            ele.block_selection = Some(BlockType::Splitter);
+        } else if keys.just_pressed(KeyCode::Key5) {
+            ele.block_selection = Some(BlockType::Storage);
+        }
+    }
 }
