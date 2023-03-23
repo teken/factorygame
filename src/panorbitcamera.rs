@@ -3,6 +3,7 @@ use bevy::{
     prelude::*,
     window::PrimaryWindow,
 };
+
 use bevy_mod_picking::PickingCameraBundle;
 
 pub struct PanOrbitCameraPlugin;
@@ -15,7 +16,8 @@ impl Plugin for PanOrbitCameraPlugin {
 }
 
 /// Tags an entity as capable of panning and orbiting.
-#[derive(Component)]
+#[derive(Reflect, Component)]
+#[reflect(Component)]
 pub struct PanOrbitCamera {
     /// The "focus point" to orbit around. It is automatically updated when panning the camera
     pub focus: Vec3,
@@ -38,6 +40,7 @@ fn pan_orbit_camera(
     mut ev_motion: EventReader<MouseMotion>,
     mut ev_scroll: EventReader<MouseWheel>,
     input_mouse: Res<Input<MouseButton>>,
+    keys: Res<Input<KeyCode>>,
     mut query: Query<(&mut PanOrbitCamera, &mut Transform, &Projection)>,
     primary_query: Query<&Window, With<PrimaryWindow>>,
 ) {
@@ -60,8 +63,10 @@ fn pan_orbit_camera(
             pan += ev.delta;
         }
     }
-    for ev in ev_scroll.iter() {
-        scroll += ev.y;
+    if !keys.pressed(KeyCode::LShift) {
+        for ev in ev_scroll.iter() {
+            scroll += ev.y;
+        }
     }
     if input_mouse.just_released(orbit_button) || input_mouse.just_pressed(orbit_button) {
         orbit_button_changed = true;
