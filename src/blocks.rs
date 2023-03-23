@@ -3,13 +3,42 @@ use bevy::{math::vec3, prelude::*};
 use crate::{
     materials::{Item, Reaction},
     player::SpawnerOptions,
+    Inventory,
 };
+
+pub struct BlockPlugin;
+
+impl Plugin for BlockPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_system(furnace_system);
+        app.add_system(conveyor_system);
+        app.add_system(input_feed_system);
+    }
+}
 
 #[derive(Component)]
 pub struct Block {
     pub min: Vec3,
     pub max: Vec3,
     pub block_type: BlockType,
+}
+
+#[derive(Component, Default)]
+pub struct Input {
+    pub output_entity: Option<Entity>,
+    pub accepts: Option<Item>,
+    pub inventory: Vec<Item>,
+}
+
+#[derive(Component, Default)]
+pub struct Output {
+    pub inventory: Vec<Item>,
+}
+
+#[derive(Component, Default)]
+pub struct Process {
+    pub reaction: Option<Reaction>,
+    pub time: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -20,6 +49,18 @@ pub enum BlockType {
     Splitter,
     Storage,
 }
+
+#[derive(Component, Default)]
+pub struct Furnace;
+
+#[derive(Component, Default)]
+pub struct Conveyor;
+
+#[derive(Component, Default)]
+pub struct Splitter;
+
+#[derive(Component, Default)]
+pub struct Storage;
 
 pub trait Spawn {
     fn spawn(
@@ -63,7 +104,11 @@ impl Spawn for BlockType {
                     ..default()
                 },
                 Name::new("Furnace"),
+                Furnace::default(),
                 block,
+                Input::default(),
+                Output::default(),
+                Process::default(),
             )),
             BlockType::Conveyor => commands.spawn((
                 PbrBundle {
@@ -73,7 +118,10 @@ impl Spawn for BlockType {
                     ..default()
                 },
                 Name::new("Conveyor"),
+                Conveyor::default(),
                 block,
+                Input::default(),
+                Output::default(),
             )),
             BlockType::Splitter => commands.spawn((
                 PbrBundle {
@@ -83,7 +131,10 @@ impl Spawn for BlockType {
                     ..default()
                 },
                 Name::new("Splitter"),
+                Splitter::default(),
                 block,
+                Input::default(),
+                Output::default(),
             )),
             BlockType::Storage => commands.spawn((
                 PbrBundle {
@@ -93,32 +144,53 @@ impl Spawn for BlockType {
                     ..default()
                 },
                 Name::new("Storage"),
+                Storage::default(),
                 block,
+                Inventory::default(),
+                Input::default(),
+                Output::default(),
             )),
         };
     }
 }
 
-pub trait Processor {
-    fn process(&self, reaction: &Reaction, input: Vec<Item>) -> Option<Vec<Item>>;
+fn furnace_system(mut query: Query<(&mut Input, &mut Output, &Process), With<Furnace>>) {
+    for (mut input, mut output, process) in query.iter_mut() {
+        let Some(reaction) = &process.reaction else {
+            continue;
+        };
+
+        if !reaction.valid_input(&input.inventory) {
+            continue;
+        }
+
+        reaction.run(&mut input.inventory, &mut output.inventory);
+    }
 }
 
-impl Processor for BlockType {
-    fn process(&self, reaction: &Reaction, input: Vec<Item>) -> Option<Vec<Item>> {
-        match self {
-            BlockType::Furnace => _process(reaction, input),
-            _ => None,
+fn conveyor_system(mut query: Query<(&mut Input, &mut Output), With<Conveyor>>) {
+    for (mut input, mut output) in query.iter_mut() {
+        if let Some(item) = input.inventory.pop() {
+            output.inventory.push(item);
         }
     }
 }
 
-fn _process(reaction: &Reaction, input: Vec<Item>) -> Option<Vec<Item>> {
-    let mut block_input: Vec<Item> = vec![];
-    let mut param_input: Vec<Item> = input.clone();
-    param_input.append(&mut block_input);
-    if reaction.valid_input(param_input) {
-        Some(reaction.output.clone())
-    } else {
-        None
+fn input_feed_system(
+    mut input_query: Query<&mut Input, With<Block>>,
+    mut output_query: Query<(&mut Output, Entity), With<Block>>,
+) {
+    for mut input in input_query.iter_mut() {
+        let Some(entity_id) = input.output_entity else {
+            continue;
+        };
+
+        let Ok((mut output, _)) = output_query.get_mut(entity_id) else {
+            continue;
+        };
+
+        if let Some(item) = input.inventory.pop() {
+            output.inventory.push(item);
+        }
     }
 }

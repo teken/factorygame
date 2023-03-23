@@ -1,10 +1,13 @@
+use bevy::prelude::*;
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Reaction {
     pub input: Vec<Item>,
     pub output: Vec<Item>,
 }
 
 impl Reaction {
-    pub fn valid_input(&self, input: Vec<Item>) -> bool {
+    pub fn valid_input(&self, input: &Vec<Item>) -> bool {
         let matching = self
             .input
             .iter()
@@ -12,6 +15,17 @@ impl Reaction {
             .filter(|&(rec, inp)| rec.0 == inp.0 && rec.1 == inp.1 && rec.2 <= inp.2)
             .count();
         matching == self.input.len() && matching == input.len()
+    }
+
+    pub fn run(&self, input_inventory: &mut Vec<Item>, output_inventory: &mut Vec<Item>) {
+        self.input.iter().for_each(|item| {
+            input_inventory
+                .iter_mut()
+                .find(|i| i.0 == item.0 && i.1 == item.1)
+                .unwrap()
+                .2 -= item.2;
+        });
+        output_inventory.append(&mut self.output.clone());
     }
 }
 

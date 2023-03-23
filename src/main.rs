@@ -40,7 +40,7 @@ fn main() {
 #[derive(Component)]
 struct BuildPlane {}
 
-#[derive(Component)]
+#[derive(Component, Default)]
 struct Inventory {
     items: Vec<Item>,
 }
