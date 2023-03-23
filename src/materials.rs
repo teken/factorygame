@@ -12,7 +12,11 @@ impl Reaction {
             .input
             .iter()
             .zip(input.iter())
-            .filter(|&(rec, inp)| rec.0 == inp.0 && rec.1 == inp.1 && rec.2 <= inp.2)
+            .filter(|&(rec, inp)| {
+                rec.material == inp.material
+                    && rec.energy == inp.energy
+                    && rec.quantity <= inp.quantity
+            })
             .count();
         matching == self.input.len() && matching == input.len()
     }
@@ -21,16 +25,20 @@ impl Reaction {
         self.input.iter().for_each(|item| {
             input_inventory
                 .iter_mut()
-                .find(|i| i.0 == item.0 && i.1 == item.1)
+                .find(|i| i.material == item.material && i.energy == item.energy)
                 .unwrap()
-                .2 -= item.2;
+                .quantity -= item.quantity;
         });
         output_inventory.append(&mut self.output.clone());
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Item(Option<Material>, Option<Energy>, f32);
+pub struct Item {
+    pub material: Option<Material>,
+    pub energy: Option<Energy>,
+    pub quantity: f32,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Material(Element, State);

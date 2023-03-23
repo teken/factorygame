@@ -34,6 +34,35 @@ pub struct Output {
     pub inventory: Vec<Item>,
 }
 
+impl Output {
+    pub fn contains(&self, accept: &Item) -> bool {
+        self.inventory.iter().any(|item| {
+            item.material == accept.material
+                && item.energy == accept.energy
+                && item.quantity >= accept.quantity
+        })
+    }
+
+    pub fn transfer(&mut self, accept: &Item, destination: &mut Vec<Item>) {
+        let mut item = self
+            .inventory
+            .iter_mut()
+            .find(|item| {
+                item.material == accept.material
+                    && item.energy == accept.energy
+                    && item.quantity >= accept.quantity
+            })
+            .unwrap();
+        item.quantity -= accept.quantity;
+        destination.push(accept.clone());
+    }
+
+    pub fn transfer_first(&mut self, destination: &mut Vec<Item>) {
+        let item = self.inventory.remove(0);
+        destination.push(item);
+    }
+}
+
 #[derive(Component, Default)]
 pub struct Process {
     pub reaction: Option<Reaction>,
@@ -193,8 +222,12 @@ fn input_feed_system(
             continue;
         };
 
-        if let Some(item) = input.inventory.pop() {
-            output.inventory.push(item);
+        if let Some(accepts) = input.accepts.clone() {
+            if !output.inventory.is_empty() && output.contains(&accepts) {
+                output.transfer(&accepts, &mut input.inventory);
+            }
+        } else {
+            output.transfer_first(&mut input.inventory);
         }
     }
 }
