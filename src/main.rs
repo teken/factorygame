@@ -10,9 +10,8 @@ use bevy_mod_picking::{DebugCursorPickingPlugin, DefaultPickingPlugins, Hover, P
 use bevy_obj::ObjPlugin;
 use bevy_prototype_debug_lines::{DebugLines, DebugLinesPlugin, DebugShapes};
 use bevy_rapier3d::prelude::*;
-use blocks::{Block, Spawn};
-use materials::Item;
-use player::{Player, PlayerPlugin, PlayerPluginCamera, SpawnerOptions};
+use blocks::{Block, BlockPlugin, Spawn};
+use player::{Modes, Player, PlayerPlugin, SpawnerOptions};
 
 fn main() {
     App::new()
@@ -24,6 +23,7 @@ fn main() {
         .add_plugin(DebugLinesPlugin::with_depth_test(true))
         .add_plugin(PlayerPlugin)
         .add_plugins(DefaultPickingPlugins)
+        .add_plugin(BlockPlugin)
         .add_plugin(DebugCursorPickingPlugin)
         .add_startup_system(setup_graphics)
         .add_system(bevy::window::close_on_esc)
@@ -34,16 +34,12 @@ fn main() {
         .add_system(empty_grid_cell_event_handler)
         .add_system(build_plane_manipulation)
         .add_system(block_clicked_event_handler)
+        .add_system(highlight_selected_block)
         .run();
 }
 
 #[derive(Component)]
 struct BuildPlane {}
-
-#[derive(Component, Default)]
-struct Inventory {
-    items: Vec<Item>,
-}
 
 const RENDER_GRID: bool = true;
 const GRID_SIZE: i32 = 100;
@@ -134,6 +130,7 @@ fn empty_grid_cell_event_spawner(
     mut ev_emptygridcellclicked: EventWriter<EmptyGridCellClickedEvent>,
     mut ev_blockclicked: EventWriter<BlockClickedEvent>,
     objects_query: Query<(&Block, Entity)>,
+    mode_states: Res<State<Modes>>,
 ) {
     let drag_time = keys.pressed(KeyCode::LControl);
     let mouse_trigger = if drag_time {
@@ -177,11 +174,15 @@ fn empty_grid_cell_event_spawner(
                 if drag_time {
                     return;
                 }
-                // ev_blockclicked.send(BlockClickedEvent {
-                //     grid_cell: i.floor(),
-                //     world_pos: i,
-                // });
-                // commands.entity(entity).insert(BlockClicked {});
+                if mode_states.0 == Modes::Destroy {
+                    commands.entity(entity).despawn_recursive();
+                } else if mode_states.0 == Modes::Overview {
+                    ev_blockclicked.send(BlockClickedEvent {
+                        grid_cell: i.floor(),
+                        world_pos: i,
+                    });
+                }
+
                 return;
             }
             None => {
@@ -196,14 +197,40 @@ fn empty_grid_cell_event_spawner(
 
 fn block_clicked_event_handler(
     mut commands: Commands,
-    keys: Res<Input<KeyCode>>,
-    objects_query: Query<Entity, (With<Block>, With<BlockClicked>)>,
+    mut ev_blockclicked: EventReader<BlockClickedEvent>,
+    objects_query: Query<(&Block, Entity)>,
+    current_selected_query: Query<(&Block, Entity), With<BlockClicked>>,
 ) {
-    // if keys.pressed(KeyCode::LControl) {
-    //     for entity in objects_query.iter() {
-    //         commands.entity(entity).despawn_recursive();
-    //     }
-    // }
+    for ele in ev_blockclicked.iter() {
+        let i = ele.world_pos;
+        let Some(clicked) = objects_query.iter().find(|(block, _)| {
+            i.x >= block.min.x
+                && i.x <= block.max.x
+                && i.y >= block.min.y
+                && i.y <= block.max.y
+                && i.z >= block.min.z
+                && i.z <= block.max.z
+        }) else {
+            return;
+        };
+        for ele in current_selected_query.iter() {
+            commands.entity(ele.1).remove::<BlockClicked>();
+        }
+        commands.entity(clicked.1).insert(BlockClicked {});
+    }
+}
+
+fn highlight_selected_block(
+    objects_query: Query<(&Block, Entity), With<BlockClicked>>,
+    mut shapes: ResMut<DebugShapes>,
+) {
+    for (block, _) in objects_query.iter() {
+        shapes
+            .cuboid()
+            .min_max(block.min, block.max)
+            .color(Color::rgba(0.0, 0.0, 1.0, 0.5))
+            .duration(0.);
+    }
 }
 
 fn empty_grid_cell_event_handler(
@@ -211,17 +238,14 @@ fn empty_grid_cell_event_handler(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut cell_clicked_event: EventReader<EmptyGridCellClickedEvent>,
-    mut shapes: ResMut<DebugShapes>,
     mut player_query: Query<&SpawnerOptions, With<Player>>,
     asset_server: Res<AssetServer>,
+    mode_states: Res<State<Modes>>,
 ) {
     for event in cell_clicked_event.iter() {
-        shapes
-            .cuboid()
-            .min_max(event.world_pos.floor(), event.world_pos.ceil())
-            .color(Color::rgba(1.0, 0.0, 0.0, 0.5))
-            .duration(3.0);
-
+        if mode_states.0 != Modes::Build {
+            return;
+        }
         for ele in player_query.iter_mut() {
             match &ele.block_selection {
                 Some(i) => i.clone().spawn(

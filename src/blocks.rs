@@ -3,7 +3,6 @@ use bevy::{math::vec3, prelude::*};
 use crate::{
     materials::{Item, Reaction},
     player::SpawnerOptions,
-    Inventory,
 };
 
 pub struct BlockPlugin;
@@ -61,6 +60,11 @@ pub struct Splitter;
 
 #[derive(Component, Default)]
 pub struct Storage;
+
+#[derive(Component, Default)]
+struct Inventory {
+    items: Vec<Item>,
+}
 
 pub trait Spawn {
     fn spawn(

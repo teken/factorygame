@@ -1,4 +1,4 @@
-use std::{default, f32::consts::PI};
+use std::f32::consts::PI;
 
 use bevy::{
     input::mouse::{MouseMotion, MouseWheel},
@@ -17,9 +17,26 @@ impl Plugin for PlayerPlugin {
         app.add_startup_system(spawn_player);
         app.add_startup_system(setup_hud);
         app.add_system(player_controller);
-        app.add_system(player_inventory_hotkeys);
+        app.add_system(player_hotkeys);
+        app.add_state::<Modes>();
+        app.add_system(mode_ui_system);
+        app.add_system(rotation_ui_system);
     }
 }
+
+#[derive(States, Default, Debug, Hash, PartialEq, Eq, Clone)]
+pub enum Modes {
+    #[default]
+    Overview,
+    Build,
+    Destroy,
+}
+
+#[derive(Component)]
+pub struct ModeReadOut;
+
+#[derive(Component)]
+pub struct RotationReadOut;
 
 #[derive(Component)]
 pub struct Player {}
@@ -200,8 +217,6 @@ fn spawn_player(mut commands: Commands) {
     ));
 }
 
-const ALIGN_ITEMS_COLOR: Color = Color::rgb(1., 0.066, 0.349);
-const JUSTIFY_CONTENT_COLOR: Color = Color::rgb(0.102, 0.522, 1.);
 const MARGIN: Val = Val::Px(5.);
 
 #[derive(Component)]
@@ -236,61 +251,69 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ..Default::default()
                 })
                 .with_children(|builder| {
-                    spawn_nested_text_bundle(
-                        builder,
-                        font.clone(),
-                        ALIGN_ITEMS_COLOR,
-                        UiRect::right(MARGIN),
-                        "AlignItems",
-                    );
-                    spawn_nested_text_bundle(
-                        builder,
-                        font,
-                        JUSTIFY_CONTENT_COLOR,
-                        UiRect::default(),
-                        "JustifyContent",
-                    );
+                    builder
+                        .spawn(NodeBundle {
+                            style: Style {
+                                padding: UiRect {
+                                    top: Val::Px(1.),
+                                    left: Val::Px(5.),
+                                    right: Val::Px(5.),
+                                    bottom: Val::Px(1.),
+                                },
+                                ..Default::default()
+                            },
+                            background_color: BackgroundColor(Color::rgb(0.102, 0.522, 1.)),
+                            ..Default::default()
+                        })
+                        .with_children(|builder| {
+                            builder.spawn((
+                                TextBundle::from_section(
+                                    "Overview",
+                                    TextStyle {
+                                        font: font.clone(),
+                                        font_size: 24.0,
+                                        color: Color::BLACK,
+                                    },
+                                ),
+                                ModeReadOut,
+                            ));
+                        });
+                    builder
+                        .spawn(NodeBundle {
+                            style: Style {
+                                padding: UiRect {
+                                    top: Val::Px(1.),
+                                    left: Val::Px(5.),
+                                    right: Val::Px(5.),
+                                    bottom: Val::Px(1.),
+                                },
+                                ..Default::default()
+                            },
+                            background_color: BackgroundColor(Color::rgb(0.102, 1., 0.14)),
+                            ..Default::default()
+                        })
+                        .with_children(|builder| {
+                            builder.spawn((
+                                TextBundle::from_section(
+                                    "North",
+                                    TextStyle {
+                                        font,
+                                        font_size: 24.0,
+                                        color: Color::BLACK,
+                                    },
+                                ),
+                                RotationReadOut,
+                            ));
+                        });
                 });
         });
 }
 
-fn spawn_nested_text_bundle(
-    builder: &mut ChildBuilder,
-    font: Handle<Font>,
-    background_color: Color,
-    margin: UiRect,
-    text: &str,
-) {
-    builder
-        .spawn(NodeBundle {
-            style: Style {
-                margin,
-                padding: UiRect {
-                    top: Val::Px(1.),
-                    left: Val::Px(5.),
-                    right: Val::Px(5.),
-                    bottom: Val::Px(1.),
-                },
-                ..Default::default()
-            },
-            background_color: BackgroundColor(background_color),
-            ..Default::default()
-        })
-        .with_children(|builder| {
-            builder.spawn(TextBundle::from_section(
-                text,
-                TextStyle {
-                    font,
-                    font_size: 24.0,
-                    color: Color::BLACK,
-                },
-            ));
-        });
-}
-
-fn player_inventory_hotkeys(
+fn player_hotkeys(
     keys: Res<Input<KeyCode>>,
     mut query: Query<&mut SpawnerOptions, With<Player>>,
+    modes_state: Res<State<Modes>>,
+    mut next_modes_state: ResMut<NextState<Modes>>,
 ) {
     for mut ele in query.iter_mut() {
         if keys.just_pressed(KeyCode::Key1) {
@@ -312,6 +335,44 @@ fn player_inventory_hotkeys(
                 Direction::Up => Direction::Down,
                 Direction::Down => Direction::North,
             }
+        } else if keys.just_pressed(KeyCode::Q) {
+            next_modes_state.set(match modes_state.0 {
+                Modes::Overview => Modes::Build,
+                Modes::Build => Modes::Destroy,
+                Modes::Destroy => Modes::Overview,
+            });
         }
+    }
+}
+
+fn mode_ui_system(
+    mut text_query: Query<&mut Text, With<ModeReadOut>>,
+    modes_state: Res<State<Modes>>,
+) {
+    for mut text in text_query.iter_mut() {
+        text.sections[0].value = match modes_state.0 {
+            Modes::Overview => "Overview",
+            Modes::Build => "Build",
+            Modes::Destroy => "Destroy",
+        }
+        .to_string();
+    }
+}
+
+fn rotation_ui_system(
+    mut text_query: Query<&mut Text, With<RotationReadOut>>,
+    player_query: Query<&SpawnerOptions, With<Player>>,
+) {
+    let Ok(spawn_options) = player_query.get_single() else { return;};
+    for mut text in text_query.iter_mut() {
+        text.sections[0].value = match spawn_options.block_rotation {
+            Direction::North => "North",
+            Direction::East => "East",
+            Direction::South => "South",
+            Direction::West => "West",
+            Direction::Up => "Up",
+            Direction::Down => "Down",
+        }
+        .to_string();
     }
 }
