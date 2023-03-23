@@ -44,12 +44,12 @@ pub enum Direction {
 impl Direction {
     pub fn to_quat(&self) -> Quat {
         match self {
-            Direction::North => Quat::from_rotation_x(0.0),
-            Direction::East => Quat::from_rotation_z(0.0),
-            Direction::South => Quat::from_rotation_x(PI),
-            Direction::West => Quat::from_rotation_z(PI),
-            Direction::Up => Quat::from_rotation_y(0.0),
-            Direction::Down => Quat::from_rotation_y(PI),
+            Direction::North => Quat::from_rotation_y(0.0),
+            Direction::East => Quat::from_rotation_y(PI * 0.5),
+            Direction::South => Quat::from_rotation_y(PI),
+            Direction::West => Quat::from_rotation_y(PI * 1.5),
+            Direction::Up => Quat::from_rotation_z(PI * 0.5),
+            Direction::Down => Quat::from_rotation_z(PI * 1.5),
         }
     }
 }
@@ -303,6 +303,15 @@ fn player_inventory_hotkeys(
             ele.block_selection = Some(BlockType::Splitter);
         } else if keys.just_pressed(KeyCode::Key5) {
             ele.block_selection = Some(BlockType::Storage);
+        } else if keys.just_pressed(KeyCode::R) {
+            ele.block_rotation = match ele.block_rotation {
+                Direction::North => Direction::East,
+                Direction::East => Direction::South,
+                Direction::South => Direction::West,
+                Direction::West => Direction::Up,
+                Direction::Up => Direction::Down,
+                Direction::Down => Direction::North,
+            }
         }
     }
 }
