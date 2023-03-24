@@ -5,10 +5,9 @@ use bevy::{
     prelude::*,
     window::PrimaryWindow,
 };
+use bevy_mod_raycast::{DefaultPluginState, RaycastSource};
 
-use bevy_mod_picking::PickingCameraBundle;
-
-use crate::blocks::BlockType;
+use crate::{blocks::BlockType, MyRaycastSet};
 
 pub struct PlayerPlugin;
 
@@ -201,6 +200,7 @@ fn spawn_player(mut commands: Commands) {
     let translation = Vec3::new(-2.0, 2.5, 5.0);
     let radius = translation.length();
 
+    commands.insert_resource(DefaultPluginState::<MyRaycastSet>::default().with_debug_cursor());
     commands.spawn((
         Name::new("Player"),
         Player {},
@@ -213,7 +213,7 @@ fn spawn_player(mut commands: Commands) {
             radius,
             ..Default::default()
         },
-        PickingCameraBundle::default(),
+        RaycastSource::<MyRaycastSet>::default(),
     ));
 }
 

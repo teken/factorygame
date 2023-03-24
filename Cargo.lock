@@ -713,18 +713,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy_mod_picking"
-version = "0.11.0"
-source = "git+https://github.com/Fincap/bevy_mod_picking?branch=migrate-bevy-0.10.0#c8d0ad06777b504130f19931a6d47834cc46402d"
-dependencies = [
- "bevy",
- "bevy_mod_raycast",
-]
-
-[[package]]
 name = "bevy_mod_raycast"
-version = "0.7.0"
-source = "git+https://github.com/soerenmeier/bevy_mod_raycast?branch=bevy-0.10#3ec796f2a891cd86e1d3df0adb3956f9ff4abe65"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc98a75743120396c8f3e3b47bfeb7f3d39248c46a625972005e51ca4d110a2a"
 dependencies = [
  "bevy",
 ]
@@ -1670,7 +1662,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy-inspector-egui",
- "bevy_mod_picking",
+ "bevy_mod_raycast",
  "bevy_obj",
  "bevy_prototype_debug_lines",
  "bevy_rapier3d",

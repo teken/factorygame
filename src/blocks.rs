@@ -1,10 +1,11 @@
-use bevy::{math::vec3, prelude::*, window::PrimaryWindow};
+use bevy::{math::vec3, prelude::*, render::primitives::Aabb};
+use bevy_mod_raycast::RaycastMesh;
 use bevy_prototype_debug_lines::DebugShapes;
 
 use crate::{
     materials::{Item, Reaction},
-    player::{self, Modes, Player, SpawnerOptions},
-    BuildPlane,
+    player::{Modes, SpawnerOptions},
+    MyRaycastSet,
 };
 
 pub struct BlockPlugin;
@@ -14,7 +15,9 @@ impl Plugin for BlockPlugin {
         app.add_system(furnace_system);
         app.add_system(conveyor_system);
         app.add_system(input_feed_system);
-        app.add_system(display_build_host_system);
+        app.add_system(display_build_ghost_system);
+        app.add_system(block_clicked_event_handler);
+        app.add_system(highlight_selected_block);
     }
 }
 
@@ -70,6 +73,7 @@ impl Output {
 pub struct Process {
     pub reaction: Option<Reaction>,
     pub time: f32,
+    pub timer: Timer,
 }
 
 #[derive(Debug, Clone)]
@@ -136,6 +140,7 @@ impl Spawn for BlockType {
                     max: click_position.ceil(),
                     block_type: BlockType::Debug,
                 },
+                RaycastMesh::<MyRaycastSet>::default(),
             )),
             BlockType::Furnace => commands.spawn((
                 PbrBundle {
@@ -157,6 +162,7 @@ impl Spawn for BlockType {
                 Input::default(),
                 Output::default(),
                 Process::default(),
+                RaycastMesh::<MyRaycastSet>::default(),
             )),
             BlockType::Conveyor => commands.spawn((
                 PbrBundle {
@@ -177,6 +183,7 @@ impl Spawn for BlockType {
                 },
                 Input::default(),
                 Output::default(),
+                RaycastMesh::<MyRaycastSet>::default(),
             )),
             BlockType::Splitter => commands.spawn((
                 PbrBundle {
@@ -197,6 +204,7 @@ impl Spawn for BlockType {
                 },
                 Input::default(),
                 Output::default(),
+                RaycastMesh::<MyRaycastSet>::default(),
             )),
             BlockType::Storage => commands.spawn((
                 PbrBundle {
@@ -218,22 +226,40 @@ impl Spawn for BlockType {
                 Inventory::default(),
                 Input::default(),
                 Output::default(),
+                RaycastMesh::<MyRaycastSet>::default(),
             )),
         };
     }
 }
 
-fn furnace_system(mut query: Query<(&mut Input, &mut Output, &Process), With<Furnace>>) {
-    for (mut input, mut output, process) in query.iter_mut() {
-        let Some(reaction) = &process.reaction else {
+fn furnace_system(
+    mut query: Query<(&mut Input, &mut Output, &mut Process), With<Furnace>>,
+    time: Res<Time>,
+) {
+    for (mut input, mut output, mut process) in query.iter_mut() {
+        if !process.reaction.is_some() {
             continue;
         };
 
-        if !reaction.valid_input(&input.inventory) {
+        if !process
+            .reaction
+            .as_ref()
+            .unwrap()
+            .valid_input(&input.inventory)
+        {
             continue;
         }
 
-        reaction.run(&mut input.inventory, &mut output.inventory);
+        process.timer.tick(time.delta());
+        if !process.timer.finished() {
+            continue;
+        }
+
+        process
+            .reaction
+            .as_ref()
+            .unwrap()
+            .run(&mut input.inventory, &mut output.inventory);
     }
 }
 
@@ -268,58 +294,99 @@ fn input_feed_system(
     }
 }
 
-fn display_build_host_system(
-    mut commands: Commands,
-    camera_query: Query<(&Camera, &GlobalTransform), With<Player>>,
-    primary_query: Query<&Window, With<PrimaryWindow>>,
-    build_plane_query: Query<(&GlobalTransform, Entity), With<BuildPlane>>,
+fn display_build_ghost_system(
     objects_query: Query<(&Block, Entity)>,
     mode_states: Res<State<Modes>>,
     mut shapes: ResMut<DebugShapes>,
+    intersect_query: Query<&bevy_mod_raycast::Intersection<MyRaycastSet>>,
 ) {
     if mode_states.0 != Modes::Build {
         return;
     }
 
-    let Ok((camera, camera_transform)) = camera_query.get_single() else {
-            return;
-        };
-    let Ok(primary) = primary_query.get_single() else {
-            return;
-        };
+    let Ok(inter) = intersect_query.get_single() else {
+        return;
+    };
 
-    let Some(cursor_position) = primary.cursor_position() else {
-            return;
-        };
+    let Some(position) = inter.position() else {
+        return;
+    };
 
-    let Some(ray) = camera
-        .viewport_to_world(camera_transform, cursor_position) else {
-            return;
-        };
+    let mod_coord = |c: f32| {
+        if (c - c.floor()).abs() < 0.001 {
+            c.floor()
+        } else if (c - c.ceil()).abs() < 0.001 {
+            c.ceil()
+        } else {
+            c
+        }
+    };
 
-    let Ok((plane_transform,_)) = build_plane_query.get_single() else {
-            return;
-        };
-
-    let Some(distance) =
-        ray.intersect_plane(plane_transform.translation(), plane_transform.up()) else {
-            return;
-        };
-
-    let i = camera_transform.translation() + ray.direction * distance;
+    let modified_x = mod_coord(position.x);
+    let modified_y = mod_coord(position.y);
+    let modified_z = mod_coord(position.z);
 
     let current_block = objects_query.iter().find(|(block, _)| {
-        i.x >= block.min.x
-            && i.x <= block.max.x
-            && i.y >= block.min.y
-            && i.y <= block.max.y
-            && i.z >= block.min.z
-            && i.z <= block.max.z
+        modified_x >= block.min.x
+            && modified_x <= block.max.x
+            && modified_y >= block.min.y
+            && modified_y <= block.max.y
+            && modified_z >= block.min.z
+            && modified_z <= block.max.z
     });
 
     if current_block.is_some() {
         return;
     }
-
-    shapes.cuboid().min_max(i.floor(), i.ceil());
+    let modified_position = vec3(modified_x, modified_y, position.z);
+    shapes.cuboid().min_max(
+        modified_position.floor(),
+        (modified_position + vec3(0., 0., 0.)).ceil(),
+    );
 }
+
+fn block_clicked_event_handler(
+    mut commands: Commands,
+    mut ev_blockclicked: EventReader<BlockClickedEvent>,
+    objects_query: Query<(&Block, Entity)>,
+    current_selected_query: Query<(&Block, Entity), With<BlockClicked>>,
+) {
+    for ele in ev_blockclicked.iter() {
+        let i = ele.world_pos;
+        let Some(clicked) = objects_query.iter().find(|(block, _)| {
+            i.x >= block.min.x
+                && i.x <= block.max.x
+                && i.y >= block.min.y
+                && i.y <= block.max.y
+                && i.z >= block.min.z
+                && i.z <= block.max.z
+        }) else {
+            return;
+        };
+        for ele in current_selected_query.iter() {
+            commands.entity(ele.1).remove::<BlockClicked>();
+        }
+        commands.entity(clicked.1).insert(BlockClicked {});
+    }
+}
+
+fn highlight_selected_block(
+    objects_query: Query<(&Block, Entity), With<BlockClicked>>,
+    mut shapes: ResMut<DebugShapes>,
+) {
+    for (block, _) in objects_query.iter() {
+        shapes
+            .cuboid()
+            .min_max(block.min, block.max)
+            .color(Color::rgba(0.0, 0.0, 1.0, 0.5))
+            .duration(0.);
+    }
+}
+
+pub struct BlockClickedEvent {
+    pub grid_cell: Vec3,
+    pub world_pos: Vec3,
+}
+
+#[derive(Component)]
+pub struct BlockClicked {}

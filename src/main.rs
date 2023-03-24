@@ -4,13 +4,16 @@ mod player;
 
 use std::f32::consts::PI;
 
-use bevy::{input::mouse::MouseWheel, prelude::*, window::PrimaryWindow};
+use bevy::{input::mouse::MouseWheel, math::vec3, prelude::*, window::PrimaryWindow};
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use bevy_mod_picking::{DebugCursorPickingPlugin, DefaultPickingPlugins, Hover, PickableBundle};
+use bevy_mod_raycast::{
+    DefaultPluginState, DefaultRaycastingPlugin, RaycastMesh, RaycastMethod, RaycastSource,
+    RaycastSystem,
+};
 use bevy_obj::ObjPlugin;
 use bevy_prototype_debug_lines::{DebugLines, DebugLinesPlugin, DebugShapes};
 use bevy_rapier3d::prelude::*;
-use blocks::{Block, BlockPlugin, Spawn};
+use blocks::{Block, BlockClickedEvent, BlockPlugin, Spawn};
 use player::{Modes, Player, PlayerPlugin, SpawnerOptions};
 
 fn main() {
@@ -22,20 +25,40 @@ fn main() {
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_plugin(DebugLinesPlugin::with_depth_test(true))
         .add_plugin(PlayerPlugin)
-        .add_plugins(DefaultPickingPlugins)
+        .add_plugin(DefaultRaycastingPlugin::<MyRaycastSet>::default())
         .add_plugin(BlockPlugin)
-        .add_plugin(DebugCursorPickingPlugin)
         .add_startup_system(setup_graphics)
         .add_system(bevy::window::close_on_esc)
         .add_event::<EmptyGridCellClickedEvent>()
         .add_event::<BlockClickedEvent>()
+        .add_system(
+            update_raycast_with_cursor
+                .in_base_set(CoreSet::First)
+                .before(RaycastSystem::BuildRays::<MyRaycastSet>),
+        )
         .add_system(grid)
         .add_system(empty_grid_cell_event_spawner)
         .add_system(empty_grid_cell_event_handler)
         .add_system(build_plane_manipulation)
-        .add_system(block_clicked_event_handler)
-        .add_system(highlight_selected_block)
         .run();
+}
+
+#[derive(Clone, Reflect)]
+struct MyRaycastSet;
+
+fn update_raycast_with_cursor(
+    mut cursor: EventReader<CursorMoved>,
+    mut query: Query<&mut RaycastSource<MyRaycastSet>>,
+) {
+    // Grab the most recent cursor event if it exists:
+    let cursor_position = match cursor.iter().last() {
+        Some(cursor_moved) => cursor_moved.position,
+        None => return,
+    };
+
+    for mut pick_source in &mut query {
+        pick_source.cast_method = RaycastMethod::Screenspace(cursor_position);
+    }
 }
 
 #[derive(Component)]
@@ -49,15 +72,17 @@ fn setup_graphics(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut ambient_light: ResMut<AmbientLight>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     // ground
     commands.spawn((
         PbrBundle {
-            mesh: meshes.add(shape::Plane::from_size(0.0).into()),
-            ..default()
+            mesh: meshes.add(shape::Plane::from_size(10000.0).into()),
+            material: materials.add(Color::NONE.into()),
+            ..Default::default()
         },
         BuildPlane {},
-        PickableBundle::default(),
+        RaycastMesh::<MyRaycastSet>::default(),
         Name::new("Build Plane"),
     ));
     // light
@@ -112,21 +137,11 @@ struct EmptyGridCellClickedEvent {
     pub world_pos: Vec3,
 }
 
-struct BlockClickedEvent {
-    pub grid_cell: Vec3,
-    pub world_pos: Vec3,
-}
-
-#[derive(Component)]
-struct BlockClicked {}
-
 fn empty_grid_cell_event_spawner(
     mut commands: Commands,
     mouse: Res<Input<MouseButton>>,
     keys: Res<Input<KeyCode>>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<Player>>,
-    primary_query: Query<&Window, With<PrimaryWindow>>,
-    build_plane_query: Query<(&GlobalTransform, Entity), (With<BuildPlane>, With<Hover>)>,
+    intersect_query: Query<&bevy_mod_raycast::Intersection<MyRaycastSet>>,
     mut ev_emptygridcellclicked: EventWriter<EmptyGridCellClickedEvent>,
     mut ev_blockclicked: EventWriter<BlockClickedEvent>,
     objects_query: Query<(&Block, Entity)>,
@@ -138,98 +153,49 @@ fn empty_grid_cell_event_spawner(
     } else {
         mouse.just_pressed(MouseButton::Left)
     };
-    if mouse_trigger {
-        let Ok((camera, camera_transform)) = camera_query.get_single() else {
-            return;
-        };
-        let Ok(primary) = primary_query.get_single() else {
-            return;
-        };
-        let Some(ray) = camera
-            .viewport_to_world(camera_transform, primary.cursor_position().unwrap()) else {
-                return;
-            };
 
-        let Ok((plane_transform,_)) = build_plane_query.get_single() else {
+    if !mouse_trigger {
+        return;
+    }
+    let Ok(inter) = intersect_query.get_single() else {
             return;
         };
 
-        let Some(distance) =
-            ray.intersect_plane(plane_transform.translation(), plane_transform.up()) else {
-                return;
-            };
+    let Some(position) = inter.position() else {
+            return;
+        };
 
-        let i = camera_transform.translation() + ray.direction * distance;
+    let clicked_block = objects_query.iter().find(|(block, _)| {
+        position.x >= block.min.x
+            && position.x <= block.max.x
+            && position.y >= block.min.y
+            && position.y <= block.max.y
+            && position.z >= block.min.z
+            && position.z <= block.max.z
+    });
 
-        let clicked_block = objects_query.iter().find(|(block, _)| {
-            i.x >= block.min.x
-                && i.x <= block.max.x
-                && i.y >= block.min.y
-                && i.y <= block.max.y
-                && i.z >= block.min.z
-                && i.z <= block.max.z
-        });
-        match clicked_block {
-            Some((_, entity)) => {
-                if drag_time {
-                    return;
-                }
-                if mode_states.0 == Modes::Destroy {
-                    commands.entity(entity).despawn_recursive();
-                } else if mode_states.0 == Modes::Overview {
-                    ev_blockclicked.send(BlockClickedEvent {
-                        grid_cell: i.floor(),
-                        world_pos: i,
-                    });
-                }
-
+    match clicked_block {
+        Some((_, entity)) => {
+            if drag_time {
                 return;
             }
-            None => {
-                ev_emptygridcellclicked.send(EmptyGridCellClickedEvent {
-                    grid_cell: i.floor(),
-                    world_pos: i,
+            if mode_states.0 == Modes::Destroy {
+                commands.entity(entity).despawn_recursive();
+            } else if mode_states.0 == Modes::Overview {
+                ev_blockclicked.send(BlockClickedEvent {
+                    grid_cell: position.floor(),
+                    world_pos: position.clone(),
                 });
             }
-        }
-    }
-}
 
-fn block_clicked_event_handler(
-    mut commands: Commands,
-    mut ev_blockclicked: EventReader<BlockClickedEvent>,
-    objects_query: Query<(&Block, Entity)>,
-    current_selected_query: Query<(&Block, Entity), With<BlockClicked>>,
-) {
-    for ele in ev_blockclicked.iter() {
-        let i = ele.world_pos;
-        let Some(clicked) = objects_query.iter().find(|(block, _)| {
-            i.x >= block.min.x
-                && i.x <= block.max.x
-                && i.y >= block.min.y
-                && i.y <= block.max.y
-                && i.z >= block.min.z
-                && i.z <= block.max.z
-        }) else {
             return;
-        };
-        for ele in current_selected_query.iter() {
-            commands.entity(ele.1).remove::<BlockClicked>();
         }
-        commands.entity(clicked.1).insert(BlockClicked {});
-    }
-}
-
-fn highlight_selected_block(
-    objects_query: Query<(&Block, Entity), With<BlockClicked>>,
-    mut shapes: ResMut<DebugShapes>,
-) {
-    for (block, _) in objects_query.iter() {
-        shapes
-            .cuboid()
-            .min_max(block.min, block.max)
-            .color(Color::rgba(0.0, 0.0, 1.0, 0.5))
-            .duration(0.);
+        None => {
+            ev_emptygridcellclicked.send(EmptyGridCellClickedEvent {
+                grid_cell: position.floor(),
+                world_pos: position.clone(),
+            });
+        }
     }
 }
 
