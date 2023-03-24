@@ -326,6 +326,8 @@ fn player_hotkeys(
             ele.block_selection = Some(BlockType::Splitter);
         } else if keys.just_pressed(KeyCode::Key5) {
             ele.block_selection = Some(BlockType::Storage);
+        } else if keys.just_pressed(KeyCode::Key6) {
+            ele.block_selection = Some(BlockType::Grabber);
         } else if keys.just_pressed(KeyCode::R) {
             ele.block_rotation = match ele.block_rotation {
                 Direction::North => Direction::East,

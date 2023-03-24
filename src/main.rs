@@ -165,13 +165,29 @@ fn empty_grid_cell_event_spawner(
             return;
         };
 
+    let mod_coord = |c: f32| {
+        if (c - c.floor()).abs() < 0.001 {
+            c.floor()
+        } else if (c - c.ceil()).abs() < 0.001 {
+            c.ceil()
+        } else {
+            c
+        }
+    };
+
+    let modified = vec3(
+        mod_coord(position.x),
+        mod_coord(position.y),
+        mod_coord(position.z),
+    );
+
     let clicked_block = objects_query.iter().find(|(block, _)| {
-        position.x >= block.min.x
-            && position.x <= block.max.x
-            && position.y >= block.min.y
-            && position.y <= block.max.y
-            && position.z >= block.min.z
-            && position.z <= block.max.z
+        modified.x >= block.min.x
+            && modified.x <= block.max.x
+            && modified.y >= block.min.y
+            && modified.y <= block.max.y
+            && modified.z >= block.min.z
+            && modified.z <= block.max.z
     });
 
     match clicked_block {
@@ -183,8 +199,8 @@ fn empty_grid_cell_event_spawner(
                 commands.entity(entity).despawn_recursive();
             } else if mode_states.0 == Modes::Overview {
                 ev_blockclicked.send(BlockClickedEvent {
-                    grid_cell: position.floor(),
-                    world_pos: position.clone(),
+                    grid_cell: modified.floor(),
+                    world_pos: modified.clone(),
                 });
             }
 
@@ -192,8 +208,8 @@ fn empty_grid_cell_event_spawner(
         }
         None => {
             ev_emptygridcellclicked.send(EmptyGridCellClickedEvent {
-                grid_cell: position.floor(),
-                world_pos: position.clone(),
+                grid_cell: modified.floor(),
+                world_pos: modified.clone(),
             });
         }
     }
