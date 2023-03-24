@@ -4,7 +4,7 @@ use bevy_prototype_debug_lines::DebugShapes;
 
 use crate::{
     materials::{Item, Reaction},
-    player::{Modes, SpawnerOptions},
+    player::{self, Modes, SpawnerOptions},
     MyRaycastSet,
 };
 
@@ -322,9 +322,32 @@ fn display_build_ghost_system(
         }
     };
 
+    // a function that take 3 floats and return the number closest to the whole number
+    let d = |x: f32, y: f32, z: f32| -> player::Direction {
+        let f_x = (x - x.floor()).abs();
+        let f_y = (y - y.floor()).abs();
+        let f_z = (z - z.floor()).abs();
+        let c_x = (x - x.ceil()).abs();
+        let c_y = (y - y.ceil()).abs();
+        let c_z = (z - z.ceil()).abs();
+
+        // println!("{} {} {} : {} {} {}", f_x, f_y, f_z, c_x, c_y, c_z);
+
+        return if f_x == c_x {
+            player::Direction::North
+        } else if f_y == c_y {
+            player::Direction::Up
+        } else {
+            //if f_z == c_z
+            player::Direction::East
+        };
+    };
+
     let modified_x = mod_coord(position.x);
     let modified_y = mod_coord(position.y);
     let modified_z = mod_coord(position.z);
+
+    let di = d(modified_x, modified_y, modified_z);
 
     let current_block = objects_query.iter().find(|(block, _)| {
         modified_x >= block.min.x
@@ -338,10 +361,24 @@ fn display_build_ghost_system(
     if current_block.is_some() {
         return;
     }
+
+    // println!("{} {} {}", modified_x, modified_y, modified_z);
+
+    // use the position detect which face of the block was clicked
+
     let modified_position = vec3(modified_x, modified_y, position.z);
     shapes.cuboid().min_max(
         modified_position.floor(),
-        (modified_position + vec3(0., 0., 0.)).ceil(),
+        (modified_position
+            + match di {
+                player::Direction::North => vec3(0.1, 0., 0.),
+                player::Direction::South => vec3(-0.1, 0., 0.),
+                player::Direction::East => vec3(0., 0., 0.1),
+                player::Direction::West => vec3(0., 0., -0.1),
+                player::Direction::Up => vec3(0., 0.1, 0.),
+                player::Direction::Down => vec3(0., -0.1, 0.),
+            })
+        .ceil(),
     );
 }
 
