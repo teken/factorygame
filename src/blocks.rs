@@ -1,8 +1,10 @@
-use bevy::{math::vec3, prelude::*};
+use bevy::{math::vec3, prelude::*, window::PrimaryWindow};
+use bevy_prototype_debug_lines::DebugShapes;
 
 use crate::{
     materials::{Item, Reaction},
-    player::SpawnerOptions,
+    player::{self, Modes, Player, SpawnerOptions},
+    BuildPlane,
 };
 
 pub struct BlockPlugin;
@@ -12,6 +14,7 @@ impl Plugin for BlockPlugin {
         app.add_system(furnace_system);
         app.add_system(conveyor_system);
         app.add_system(input_feed_system);
+        app.add_system(display_build_host_system);
     }
 }
 
@@ -103,7 +106,7 @@ pub trait Spawn {
         materials: &mut Assets<StandardMaterial>,
         asset_server: &Res<AssetServer>,
         spawner_options: &SpawnerOptions,
-        block: Block,
+        click_position: Vec3,
     );
 }
 
@@ -115,70 +118,103 @@ impl Spawn for BlockType {
         materials: &mut Assets<StandardMaterial>,
         asset_server: &Res<AssetServer>,
         spawner_options: &SpawnerOptions,
-        block: Block,
+        click_position: Vec3,
     ) {
-        let block_transform = Transform::from_translation(block.min + vec3(0.5, 0.5, 0.5))
-            .with_rotation(spawner_options.block_rotation.to_quat());
         match self {
             BlockType::Debug => commands.spawn((
                 SceneBundle {
                     scene: asset_server.load(r"models\test.gltf#Scene0"),
-                    transform: block_transform,
+                    transform: Transform::from_translation(
+                        click_position.floor() + vec3(0.5, 0.5, 0.5),
+                    )
+                    .with_rotation(spawner_options.block_rotation.to_quat()),
                     ..default()
                 },
                 Name::new("Debug Block"),
-                block,
+                Block {
+                    min: click_position.floor(),
+                    max: click_position.ceil(),
+                    block_type: BlockType::Debug,
+                },
             )),
             BlockType::Furnace => commands.spawn((
                 PbrBundle {
                     mesh: meshes.add(shape::Cube::new(1.0).into()),
                     material: materials.add(Color::RED.into()),
-                    transform: block_transform,
+                    transform: Transform::from_translation(
+                        click_position.floor() + vec3(0.5, 0.5, 0.5),
+                    )
+                    .with_rotation(spawner_options.block_rotation.to_quat()),
                     ..default()
                 },
                 Name::new("Furnace"),
                 Furnace::default(),
-                block,
+                Block {
+                    min: click_position.floor(),
+                    max: click_position.ceil(),
+                    block_type: BlockType::Furnace,
+                },
                 Input::default(),
                 Output::default(),
                 Process::default(),
             )),
             BlockType::Conveyor => commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(shape::Cube::new(1.0).into()),
+                    mesh: meshes.add(shape::Box::new(1.0, 0.2, 0.2).into()),
                     material: materials.add(Color::BLUE.into()),
-                    transform: block_transform,
+                    transform: Transform::from_translation(
+                        click_position.floor() + vec3(0.5, 0.5, 0.5),
+                    )
+                    .with_rotation(spawner_options.block_rotation.to_quat()),
                     ..default()
                 },
                 Name::new("Conveyor"),
                 Conveyor::default(),
-                block,
+                Block {
+                    min: click_position.floor(),
+                    max: click_position.ceil(),
+                    block_type: BlockType::Conveyor,
+                },
                 Input::default(),
                 Output::default(),
             )),
             BlockType::Splitter => commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(shape::Cube::new(1.0).into()),
+                    mesh: meshes.add(shape::Box::new(1.0, 1.0, 2.0).into()),
                     material: materials.add(Color::GREEN.into()),
-                    transform: block_transform,
+                    transform: Transform::from_translation(
+                        click_position.floor() + vec3(0.5, 0.5, 0.),
+                    )
+                    .with_rotation(spawner_options.block_rotation.to_quat()),
                     ..default()
                 },
                 Name::new("Splitter"),
                 Splitter::default(),
-                block,
+                Block {
+                    min: click_position.floor(),
+                    max: click_position.ceil() + vec3(0., 0., 1.),
+                    block_type: BlockType::Splitter,
+                },
                 Input::default(),
                 Output::default(),
             )),
             BlockType::Storage => commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(shape::Cube::new(1.0).into()),
+                    mesh: meshes.add(shape::Box::new(1.0, 0.8, 1.0).into()),
                     material: materials.add(Color::YELLOW.into()),
-                    transform: block_transform,
+                    transform: Transform::from_translation(
+                        click_position.floor() + vec3(0.5, 0.4, 0.5),
+                    )
+                    .with_rotation(spawner_options.block_rotation.to_quat()),
                     ..default()
                 },
                 Name::new("Storage"),
                 Storage::default(),
-                block,
+                Block {
+                    min: click_position.floor(),
+                    max: click_position.ceil(),
+                    block_type: BlockType::Storage,
+                },
                 Inventory::default(),
                 Input::default(),
                 Output::default(),
@@ -230,4 +266,60 @@ fn input_feed_system(
             output.transfer_first(&mut input.inventory);
         }
     }
+}
+
+fn display_build_host_system(
+    mut commands: Commands,
+    camera_query: Query<(&Camera, &GlobalTransform), With<Player>>,
+    primary_query: Query<&Window, With<PrimaryWindow>>,
+    build_plane_query: Query<(&GlobalTransform, Entity), With<BuildPlane>>,
+    objects_query: Query<(&Block, Entity)>,
+    mode_states: Res<State<Modes>>,
+    mut shapes: ResMut<DebugShapes>,
+) {
+    if mode_states.0 != Modes::Build {
+        return;
+    }
+
+    let Ok((camera, camera_transform)) = camera_query.get_single() else {
+            return;
+        };
+    let Ok(primary) = primary_query.get_single() else {
+            return;
+        };
+
+    let Some(cursor_position) = primary.cursor_position() else {
+            return;
+        };
+
+    let Some(ray) = camera
+        .viewport_to_world(camera_transform, cursor_position) else {
+            return;
+        };
+
+    let Ok((plane_transform,_)) = build_plane_query.get_single() else {
+            return;
+        };
+
+    let Some(distance) =
+        ray.intersect_plane(plane_transform.translation(), plane_transform.up()) else {
+            return;
+        };
+
+    let i = camera_transform.translation() + ray.direction * distance;
+
+    let current_block = objects_query.iter().find(|(block, _)| {
+        i.x >= block.min.x
+            && i.x <= block.max.x
+            && i.y >= block.min.y
+            && i.y <= block.max.y
+            && i.z >= block.min.z
+            && i.z <= block.max.z
+    });
+
+    if current_block.is_some() {
+        return;
+    }
+
+    shapes.cuboid().min_max(i.floor(), i.ceil());
 }

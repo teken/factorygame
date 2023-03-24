@@ -47,7 +47,7 @@ pub struct SpawnerOptions {
     pub block_rotation: Direction,
 }
 
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub enum Direction {
     #[default]
     North,

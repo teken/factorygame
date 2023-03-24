@@ -254,11 +254,7 @@ fn empty_grid_cell_event_handler(
                     &mut materials,
                     &asset_server,
                     ele,
-                    Block {
-                        min: event.world_pos.floor(),
-                        max: event.world_pos.ceil(),
-                        block_type: i.clone(),
-                    },
+                    event.world_pos,
                 ),
                 None => {}
             }
