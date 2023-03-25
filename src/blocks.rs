@@ -1,9 +1,9 @@
-use bevy::{math::vec3, prelude::*};
+use bevy::{math::vec3, prelude::*, utils::HashMap};
 use bevy_mod_raycast::RaycastMesh;
 use bevy_prototype_debug_lines::DebugShapes;
 
 use crate::{
-    materials::{self, Item, Reaction},
+    materials::{self, ItemStack, Reaction},
     player::{self, Modes, Player, SpawnerOptions},
     reactions::PROCESS_IRON_TO_GOLD,
     MyRaycastSet,
@@ -35,14 +35,13 @@ pub struct Block {
 
 #[derive(Component, Default)]
 pub struct Input {
-    // pub output_entity: Option<Entity>,
-    pub accepts: Option<Item>,
-    pub inventory: Vec<Item>,
+    pub accepts: Option<ItemStack>,
+    pub inventory: Vec<ItemStack>,
 }
 
 #[derive(Component, Default)]
 pub struct Output {
-    pub inventory: Vec<Item>,
+    pub inventory: Vec<ItemStack>,
 }
 
 #[derive(Component, Default, Reflect)]
@@ -52,29 +51,36 @@ pub struct LogInput;
 pub struct LogOutput;
 
 impl Output {
-    pub fn contains(&self, accept: &Item) -> bool {
-        self.inventory.iter().any(|item| {
-            item.material == accept.material
-                && item.energy == accept.energy
-                && item.quantity >= accept.quantity
-        })
+    pub fn contains(&self, accept: &ItemStack) -> bool {
+        self.inventory
+            .iter()
+            .any(|item| item.item_type == accept.item_type && item.quantity >= accept.quantity)
     }
 
-    pub fn transfer(&mut self, accept: &Item, destination: &mut Vec<Item>) {
-        let mut item = self
+    pub fn transfer(&mut self, accept: &ItemStack, destination: &mut Vec<ItemStack>) {
+        // todo : cover when requested quantity is more than a single stack size
+        let Some(mut item) = self
             .inventory
             .iter_mut()
-            .find(|item| {
-                item.material == accept.material
-                    && item.energy == accept.energy
-                    && item.quantity >= accept.quantity
-            })
-            .unwrap();
+            .find(|item| item.item_type == accept.item_type && item.quantity >= accept.quantity)
+            else {
+                return;
+        };
         item.quantity -= accept.quantity;
+
+        let item_c = item.clone();
+        if item.quantity == 0 {
+            let index = self.inventory.iter().position(|x| x == &item_c);
+            if let Some(index) = index {
+                self.inventory.remove(index);
+            }
+        }
+        // todo: cover when stack size is greater than 1 stack or the distation doesn't have space
         destination.push(accept.clone());
     }
 
-    pub fn transfer_first(&mut self, destination: &mut Vec<Item>) {
+    // todo: same as above
+    pub fn transfer_first(&mut self, destination: &mut Vec<ItemStack>) {
         if self.inventory.is_empty() {
             return;
         }
@@ -114,11 +120,6 @@ pub struct Storage;
 
 #[derive(Component, Default)]
 pub struct Grabber;
-
-#[derive(Component, Default)]
-struct Inventory {
-    items: Vec<Item>,
-}
 
 pub trait Spawn {
     fn spawn(
@@ -251,14 +252,9 @@ impl Spawn for BlockType {
                 // Inventory::default(),
                 Input::default(),
                 Output {
-                    inventory: vec![Item {
-                        material: Some(materials::Material {
-                            element: materials::Element::Iron,
-                            state: materials::State::Solid,
-                        }),
-                        energy: None,
-                        quantity: 10.0,
-                    }],
+                    inventory: vec![
+                        materials::Element::Iron.to_item_stack(materials::State::Solid, 10)
+                    ],
                 },
                 LogInput::default(),
                 RaycastMesh::<MyRaycastSet>::default(),

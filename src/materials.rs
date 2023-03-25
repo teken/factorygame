@@ -1,4 +1,5 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, utils::hashbrown::HashMap};
+use lazy_static::lazy_static;
 
 pub struct MaterialPlugin;
 
@@ -8,30 +9,26 @@ impl Plugin for MaterialPlugin {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reaction {
-    pub input: Vec<Item>,
-    pub output: Vec<Item>,
+    pub input: Vec<ItemStack>,
+    pub output: Vec<ItemStack>,
 }
 
 impl Reaction {
-    pub fn valid_input(&self, input: &Vec<Item>) -> bool {
+    pub fn valid_input(&self, input: &Vec<ItemStack>) -> bool {
         let matching = self
             .input
             .iter()
             .zip(input.iter())
-            .filter(|&(rec, inp)| {
-                rec.material == inp.material
-                    && rec.energy == inp.energy
-                    && rec.quantity <= inp.quantity
-            })
+            .filter(|&(rec, inp)| rec.item_type == inp.item_type && rec.quantity <= inp.quantity)
             .count();
         matching == self.input.len() && matching == input.len()
     }
 
-    pub fn run(&self, input_inventory: &mut Vec<Item>, output_inventory: &mut Vec<Item>) {
+    pub fn run(&self, input_inventory: &mut Vec<ItemStack>, output_inventory: &mut Vec<ItemStack>) {
         self.input.iter().for_each(|item| {
             input_inventory
                 .iter_mut()
-                .find(|i| i.material == item.material && i.energy == item.energy)
+                .find(|i| i.item_type == item.item_type)
                 .unwrap()
                 .quantity -= item.quantity;
         });
@@ -39,20 +36,49 @@ impl Reaction {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Item {
-    pub material: Option<Material>,
-    pub energy: Option<Energy>,
-    pub quantity: f32,
+#[derive(Debug, Clone, PartialEq)]
+pub struct ItemStack {
+    pub item_type: ItemStackType,
+    pub quantity: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Reflect)]
-pub struct Material {
-    pub element: Element,
-    pub state: State,
+impl ItemStack {
+    pub fn new(item_type: ItemStackType, quantity: u32) -> ItemStack {
+        ItemStack {
+            item_type,
+            quantity,
+        }
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Reflect)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ItemStackType {
+    Element(Element, State),
+    Energy(Energy),
+}
+
+impl ItemStackType {
+    pub fn to_item_stack(self, quantity: u32) -> ItemStack {
+        ItemStack {
+            item_type: self.clone(),
+            quantity,
+        }
+    }
+
+    pub fn quantity_limit(&self) -> u32 {
+        ITEMSTACKTYPE_QUANTITY_LIMITS
+            .get(self)
+            .unwrap_or(&0)
+            .clone()
+    }
+}
+
+lazy_static! {
+    pub static ref ITEMSTACKTYPE_QUANTITY_LIMITS: HashMap<ItemStackType, u32> =
+        HashMap::from([(ItemStackType::Element(Element::Hydrogen, State::Solid), 100),]);
+}
+
+#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash)]
 pub enum Energy {
     Mechanical,
     Electric,
@@ -67,6 +93,15 @@ pub enum Energy {
     Radiant,
     Rest,
     Thermal,
+}
+
+impl Energy {
+    pub fn to_item_stack(self, quantity: u32) -> ItemStack {
+        ItemStack {
+            item_type: ItemStackType::Energy(self),
+            quantity,
+        }
+    }
 }
 
 // pub enum IonizingRadiation {
@@ -87,7 +122,7 @@ pub enum Energy {
 //     Blackbody,
 // }
 
-#[derive(Clone, Debug, PartialEq, Reflect)]
+#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash)]
 pub enum State {
     Solid,
     Liquid,
@@ -95,7 +130,16 @@ pub enum State {
     Plasma,
 }
 
-#[derive(Clone, Debug, PartialEq, Reflect)]
+impl State {
+    pub fn to_item_stack(self, element: Element, quantity: u32) -> ItemStack {
+        ItemStack {
+            item_type: ItemStackType::Element(element, self),
+            quantity,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash)]
 pub enum Element {
     Hydrogen,
     Helium,
@@ -215,4 +259,13 @@ pub enum Element {
     Livermorium,
     Tennessine,
     Oganesson,
+}
+
+impl Element {
+    pub fn to_item_stack(self, state: State, quantity: u32) -> ItemStack {
+        ItemStack {
+            item_type: ItemStackType::Element(self, state),
+            quantity,
+        }
+    }
 }
