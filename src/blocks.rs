@@ -14,7 +14,8 @@ pub struct BlockPlugin;
 impl Plugin for BlockPlugin {
     fn build(&self, app: &mut App) {
         app.add_system(furnace_system);
-        app.add_system(conveyor_system);
+        app.add_system(internal_conveyor_system);
+        app.add_system(external_conveyor_system);
         // app.add_system(input_feed_system);
         app.add_system(grabber_system);
         app.add_system(display_build_ghost_system);
@@ -316,10 +317,63 @@ fn furnace_system(
     }
 }
 
-fn conveyor_system(mut query: Query<(&mut Input, &mut Output), With<Conveyor>>) {
+fn internal_conveyor_system(mut query: Query<(&mut Input, &mut Output), With<Conveyor>>) {
     for (mut input, mut output) in query.iter_mut() {
         if let Some(item) = input.inventory.pop() {
             output.inventory.push(item);
+        }
+    }
+}
+
+fn external_conveyor_system(
+    mut input_query: Query<(&Block, &mut Input), With<Conveyor>>,
+    mut output_query: Query<(&Block, &mut Output), With<Conveyor>>,
+) {
+    for (block, mut input) in input_query.iter_mut() {
+        let output;
+        match block.direction {
+            player::Direction::North => {
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x - 1. && t.min.y == block.min.y && t.min.z == block.min.z
+                });
+            }
+            player::Direction::South => {
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x + 1. && t.min.y == block.min.y && t.min.z == block.min.z
+                });
+            }
+            player::Direction::East => {
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z - 1.
+                });
+            }
+            player::Direction::West => {
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z + 1.
+                });
+            }
+            player::Direction::Up => {
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y - 1. && t.min.z == block.min.z
+                });
+            }
+            player::Direction::Down => {
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y + 1. && t.min.z == block.min.z
+                });
+            }
+        }
+
+        let Some((_, mut output)) = output else {
+            return;
+        };
+
+        if let Some(accepts) = input.accepts.clone() {
+            if !output.inventory.is_empty() && output.contains(&accepts) {
+                output.transfer(&accepts, &mut input.inventory);
+            }
+        } else {
+            output.transfer_first(&mut input.inventory);
         }
     }
 }
