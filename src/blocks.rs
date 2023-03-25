@@ -90,7 +90,7 @@ pub struct Process {
     // pub timer: Timer,
 }
 
-#[derive(Debug, Clone, Reflect)]
+#[derive(Debug, Clone, Reflect, Copy)]
 pub enum BlockType {
     Debug,
     Furnace,
@@ -377,29 +377,6 @@ fn external_conveyor_system(
         }
     }
 }
-
-// fn input_feed_system(
-//     mut input_query: Query<&mut Input, With<Block>>,
-//     mut output_query: Query<(&mut Output, Entity), With<Block>>,
-// ) {
-//     for mut input in input_query.iter_mut() {
-//         let Some(entity_id) = input.output_entity else {
-//             continue;
-//         };
-
-//         let Ok((mut output, _)) = output_query.get_mut(entity_id) else {
-//             continue;
-//         };
-
-//         if let Some(accepts) = input.accepts.clone() {
-//             if !output.inventory.is_empty() && output.contains(&accepts) {
-//                 output.transfer(&accepts, &mut input.inventory);
-//             }
-//         } else {
-//             output.transfer_first(&mut input.inventory);
-//         }
-//     }
-// }
 
 fn grabber_system(
     grabber_query: Query<&Block, With<Grabber>>,

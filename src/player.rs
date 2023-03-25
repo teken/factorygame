@@ -20,6 +20,7 @@ impl Plugin for PlayerPlugin {
         app.add_state::<Modes>();
         app.add_system(mode_ui_system);
         app.add_system(rotation_ui_system);
+        app.add_system(block_ui_system);
     }
 }
 
@@ -36,6 +37,9 @@ pub struct ModeReadOut;
 
 #[derive(Component)]
 pub struct RotationReadOut;
+
+#[derive(Component)]
+pub struct BlockReadOut;
 
 #[derive(Component)]
 pub struct Player {}
@@ -297,12 +301,39 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 TextBundle::from_section(
                                     "North",
                                     TextStyle {
-                                        font,
+                                        font: font.clone(),
                                         font_size: 24.0,
                                         color: Color::BLACK,
                                     },
                                 ),
                                 RotationReadOut,
+                            ));
+                        });
+                    builder
+                        .spawn(NodeBundle {
+                            style: Style {
+                                padding: UiRect {
+                                    top: Val::Px(1.),
+                                    left: Val::Px(5.),
+                                    right: Val::Px(5.),
+                                    bottom: Val::Px(1.),
+                                },
+                                ..Default::default()
+                            },
+                            background_color: BackgroundColor(Color::rgb(1., 0.1, 0.14)),
+                            ..Default::default()
+                        })
+                        .with_children(|builder| {
+                            builder.spawn((
+                                TextBundle::from_section(
+                                    "Nothing",
+                                    TextStyle {
+                                        font,
+                                        font_size: 24.0,
+                                        color: Color::BLACK,
+                                    },
+                                ),
+                                BlockReadOut,
                             ));
                         });
                 });
@@ -374,6 +405,27 @@ fn rotation_ui_system(
             Direction::West => "West",
             Direction::Up => "Up",
             Direction::Down => "Down",
+        }
+        .to_string();
+    }
+}
+
+fn block_ui_system(
+    mut text_query: Query<&mut Text, With<BlockReadOut>>,
+    player_query: Query<&SpawnerOptions, With<Player>>,
+) {
+    let Ok(spawn_options) = player_query.get_single() else { return;};
+    for mut text in text_query.iter_mut() {
+        text.sections[0].value = match spawn_options.block_selection {
+            Some(block) => match block {
+                BlockType::Debug => "Debug",
+                BlockType::Furnace => "Furnace",
+                BlockType::Conveyor => "Conveyor",
+                BlockType::Splitter => "Splitter",
+                BlockType::Storage => "Storage",
+                BlockType::Grabber => "Grabber",
+            },
+            None => "Nothing",
         }
         .to_string();
     }
