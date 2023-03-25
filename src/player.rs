@@ -221,8 +221,6 @@ fn spawn_player(mut commands: Commands) {
     ));
 }
 
-const MARGIN: Val = Val::Px(5.);
-
 #[derive(Component)]
 pub struct UICamera;
 
@@ -249,7 +247,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .spawn(NodeBundle {
                     style: Style {
                         flex_direction: FlexDirection::Row,
-                        margin: UiRect::top(MARGIN),
+                        margin: UiRect::top(Val::Px(5.)),
                         ..Default::default()
                     },
                     ..Default::default()

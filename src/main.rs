@@ -106,6 +106,7 @@ fn setup_graphics(
 fn grid(
     mut lines: ResMut<DebugLines>,
     build_plane_query: Query<(&Transform, Entity), With<BuildPlane>>,
+    intersect_query: Query<&bevy_mod_raycast::Intersection<MyRaycastSet>>,
 ) {
     if !RENDER_GRID {
         return;
@@ -114,20 +115,46 @@ fn grid(
     let Ok((trans, _)) = build_plane_query.get_single() else {
         return;
     };
-    for x in (-GRID_SIZE..GRID_SIZE).step_by(GRID_CELL_SIZE) {
+
+    let pos = if intersect_query.get_single().is_ok() {
+        intersect_query
+            .get_single()
+            .unwrap()
+            .position()
+            .unwrap_or(&vec3(0., 0., 0.))
+            .floor()
+    } else {
+        vec3(0., 0., 0.)
+    };
+
+    let start_grid_z = pos.z as i32 - GRID_SIZE;
+    let end_grid_z = pos.z as i32 + GRID_SIZE;
+
+    let start_grid_x = pos.x as i32 - GRID_SIZE;
+    let end_grid_x = pos.x as i32 + GRID_SIZE;
+
+    for x in (start_grid_x..=end_grid_x).step_by(GRID_CELL_SIZE) {
         lines.line_colored(
-            Vec3::new(x as f32, trans.translation.y, -GRID_SIZE as f32),
-            Vec3::new(x as f32, trans.translation.y, GRID_SIZE as f32),
+            Vec3::new(x as f32, trans.translation.y, start_grid_z as f32),
+            Vec3::new(x as f32, trans.translation.y, end_grid_z as f32),
             0.0,
-            Color::rgb(0.5, 0.5, 0.5),
+            if x == 0 {
+                Color::rgb(0., 0., 1.)
+            } else {
+                Color::rgb(0.5, 0.5, 0.5)
+            },
         );
     }
-    for z in (-GRID_SIZE..GRID_SIZE).step_by(GRID_CELL_SIZE) {
+    for z in (start_grid_z..=end_grid_z).step_by(GRID_CELL_SIZE) {
         lines.line_colored(
-            Vec3::new(-GRID_SIZE as f32, trans.translation.y, z as f32),
-            Vec3::new(GRID_SIZE as f32, trans.translation.y, z as f32),
+            Vec3::new(start_grid_x as f32, trans.translation.y, z as f32),
+            Vec3::new(end_grid_x as f32, trans.translation.y, z as f32),
             0.0,
-            Color::rgb(0.5, 0.5, 0.5),
+            if z == 0 {
+                Color::rgb(1., 0., 0.)
+            } else {
+                Color::rgb(0.5, 0.5, 0.5)
+            },
         );
     }
 }
