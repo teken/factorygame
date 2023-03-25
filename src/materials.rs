@@ -1,5 +1,11 @@
 use bevy::prelude::*;
 
+pub struct MaterialPlugin;
+
+impl Plugin for MaterialPlugin {
+    fn build(&self, app: &mut App) {}
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reaction {
     pub input: Vec<Item>,
@@ -40,10 +46,13 @@ pub struct Item {
     pub quantity: f32,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Material(Element, State);
+#[derive(Clone, Debug, PartialEq, Reflect)]
+pub struct Material {
+    pub element: Element,
+    pub state: State,
+}
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Reflect)]
 pub enum Energy {
     Mechanical,
     Electric,
@@ -78,7 +87,7 @@ pub enum Energy {
 //     Blackbody,
 // }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Reflect)]
 pub enum State {
     Solid,
     Liquid,
@@ -86,7 +95,7 @@ pub enum State {
     Plasma,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Reflect)]
 pub enum Element {
     Hydrogen,
     Helium,

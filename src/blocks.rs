@@ -1,10 +1,11 @@
-use bevy::{math::vec3, prelude::*, render::primitives::Aabb};
+use bevy::{math::vec3, prelude::*};
 use bevy_mod_raycast::RaycastMesh;
 use bevy_prototype_debug_lines::DebugShapes;
 
 use crate::{
-    materials::{Item, Reaction},
+    materials::{self, Item, Reaction},
     player::{self, Modes, Player, SpawnerOptions},
+    reactions::PROCESS_IRON_TO_GOLD,
     MyRaycastSet,
 };
 
@@ -14,23 +15,26 @@ impl Plugin for BlockPlugin {
     fn build(&self, app: &mut App) {
         app.add_system(furnace_system);
         app.add_system(conveyor_system);
-        app.add_system(input_feed_system);
+        // app.add_system(input_feed_system);
+        app.add_system(grabber_system);
         app.add_system(display_build_ghost_system);
         app.add_system(block_clicked_event_handler);
         app.add_system(highlight_selected_block);
+        app.add_system(logger_system);
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Reflect)]
 pub struct Block {
     pub min: Vec3,
     pub max: Vec3,
     pub block_type: BlockType,
+    pub direction: player::Direction,
 }
 
 #[derive(Component, Default)]
 pub struct Input {
-    pub output_entity: Option<Entity>,
+    // pub output_entity: Option<Entity>,
     pub accepts: Option<Item>,
     pub inventory: Vec<Item>,
 }
@@ -39,6 +43,12 @@ pub struct Input {
 pub struct Output {
     pub inventory: Vec<Item>,
 }
+
+#[derive(Component, Default, Reflect)]
+pub struct LogInput;
+
+#[derive(Component, Default, Reflect)]
+pub struct LogOutput;
 
 impl Output {
     pub fn contains(&self, accept: &Item) -> bool {
@@ -64,6 +74,9 @@ impl Output {
     }
 
     pub fn transfer_first(&mut self, destination: &mut Vec<Item>) {
+        if self.inventory.is_empty() {
+            return;
+        }
         let item = self.inventory.remove(0);
         destination.push(item);
     }
@@ -72,11 +85,11 @@ impl Output {
 #[derive(Component, Default)]
 pub struct Process {
     pub reaction: Option<Reaction>,
-    pub time: f32,
-    pub timer: Timer,
+    // pub time: f32,
+    // pub timer: Timer,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Reflect)]
 pub enum BlockType {
     Debug,
     Furnace,
@@ -97,6 +110,9 @@ pub struct Splitter;
 
 #[derive(Component, Default)]
 pub struct Storage;
+
+#[derive(Component, Default)]
+pub struct Grabber;
 
 #[derive(Component, Default)]
 struct Inventory {
@@ -140,6 +156,7 @@ impl Spawn for BlockType {
                     min: click_position.floor(),
                     max: click_position.ceil(),
                     block_type: BlockType::Debug,
+                    direction: spawner_options.block_rotation.clone(),
                 },
                 RaycastMesh::<MyRaycastSet>::default(),
             )),
@@ -159,10 +176,13 @@ impl Spawn for BlockType {
                     min: click_position.floor(),
                     max: click_position.ceil(),
                     block_type: BlockType::Furnace,
+                    direction: spawner_options.block_rotation.clone(),
                 },
                 Input::default(),
                 Output::default(),
-                Process::default(),
+                Process {
+                    reaction: Some(PROCESS_IRON_TO_GOLD.clone()),
+                },
                 RaycastMesh::<MyRaycastSet>::default(),
             )),
             BlockType::Conveyor => commands.spawn((
@@ -181,6 +201,7 @@ impl Spawn for BlockType {
                     min: click_position.floor(),
                     max: click_position.ceil(),
                     block_type: BlockType::Conveyor,
+                    direction: spawner_options.block_rotation.clone(),
                 },
                 Input::default(),
                 Output::default(),
@@ -202,6 +223,7 @@ impl Spawn for BlockType {
                     min: click_position.floor(),
                     max: click_position.ceil() + vec3(0., 0., 1.),
                     block_type: BlockType::Splitter,
+                    direction: spawner_options.block_rotation.clone(),
                 },
                 Input::default(),
                 Output::default(),
@@ -223,10 +245,21 @@ impl Spawn for BlockType {
                     min: click_position.floor(),
                     max: click_position.ceil(),
                     block_type: BlockType::Storage,
+                    direction: spawner_options.block_rotation.clone(),
                 },
-                Inventory::default(),
+                // Inventory::default(),
                 Input::default(),
-                Output::default(),
+                Output {
+                    inventory: vec![Item {
+                        material: Some(materials::Material {
+                            element: materials::Element::Iron,
+                            state: materials::State::Solid,
+                        }),
+                        energy: None,
+                        quantity: 10.0,
+                    }],
+                },
+                LogInput::default(),
                 RaycastMesh::<MyRaycastSet>::default(),
             )),
             BlockType::Grabber => commands.spawn((
@@ -239,10 +272,12 @@ impl Spawn for BlockType {
                     ..default()
                 },
                 Name::new("Grabber Block"),
+                Grabber::default(),
                 Block {
                     min: click_position.floor(),
                     max: click_position.ceil(),
                     block_type: BlockType::Grabber,
+                    direction: spawner_options.block_rotation.clone(),
                 },
                 RaycastMesh::<MyRaycastSet>::default(),
             )),
@@ -252,7 +287,7 @@ impl Spawn for BlockType {
 
 fn furnace_system(
     mut query: Query<(&mut Input, &mut Output, &mut Process), With<Furnace>>,
-    time: Res<Time>,
+    // time: Res<Time>,
 ) {
     for (mut input, mut output, mut process) in query.iter_mut() {
         if !process.reaction.is_some() {
@@ -268,10 +303,10 @@ fn furnace_system(
             continue;
         }
 
-        process.timer.tick(time.delta());
-        if !process.timer.finished() {
-            continue;
-        }
+        // process.timer.tick(time.delta());
+        // if !process.timer.finished() {
+        //     continue;
+        // }
 
         process
             .reaction
@@ -289,17 +324,94 @@ fn conveyor_system(mut query: Query<(&mut Input, &mut Output), With<Conveyor>>) 
     }
 }
 
-fn input_feed_system(
-    mut input_query: Query<&mut Input, With<Block>>,
-    mut output_query: Query<(&mut Output, Entity), With<Block>>,
+// fn input_feed_system(
+//     mut input_query: Query<&mut Input, With<Block>>,
+//     mut output_query: Query<(&mut Output, Entity), With<Block>>,
+// ) {
+//     for mut input in input_query.iter_mut() {
+//         let Some(entity_id) = input.output_entity else {
+//             continue;
+//         };
+
+//         let Ok((mut output, _)) = output_query.get_mut(entity_id) else {
+//             continue;
+//         };
+
+//         if let Some(accepts) = input.accepts.clone() {
+//             if !output.inventory.is_empty() && output.contains(&accepts) {
+//                 output.transfer(&accepts, &mut input.inventory);
+//             }
+//         } else {
+//             output.transfer_first(&mut input.inventory);
+//         }
+//     }
+// }
+
+fn grabber_system(
+    grabber_query: Query<&Block, With<Grabber>>,
+    mut input_query: Query<(&Block, &mut Input)>,
+    mut output_query: Query<(&Block, &mut Output)>,
 ) {
-    for mut input in input_query.iter_mut() {
-        let Some(entity_id) = input.output_entity else {
-            continue;
+    for block in grabber_query.iter() {
+        let input;
+        let output;
+        match block.direction {
+            player::Direction::North => {
+                input = input_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x + 1. && t.min.y == block.min.y && t.min.z == block.min.z
+                });
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x - 1. && t.min.y == block.min.y && t.min.z == block.min.z
+                });
+            }
+            player::Direction::South => {
+                input = input_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x - 1. && t.min.y == block.min.y && t.min.z == block.min.z
+                });
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x + 1. && t.min.y == block.min.y && t.min.z == block.min.z
+                });
+            }
+            player::Direction::East => {
+                input = input_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z + 1.
+                });
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z - 1.
+                });
+            }
+            player::Direction::West => {
+                input = input_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z - 1.
+                });
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z + 1.
+                });
+            }
+            player::Direction::Up => {
+                input = input_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y + 1. && t.min.z == block.min.z
+                });
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y - 1. && t.min.z == block.min.z
+                });
+            }
+            player::Direction::Down => {
+                input = input_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y - 1. && t.min.z == block.min.z
+                });
+                output = output_query.iter_mut().find(|(t, _)| {
+                    t.min.x == block.min.x && t.min.y == block.min.y + 1. && t.min.z == block.min.z
+                });
+            }
+        }
+
+        let Some((_, mut input)) = input else {
+            return;
         };
 
-        let Ok((mut output, _)) = output_query.get_mut(entity_id) else {
-            continue;
+        let Some((_, mut output)) = output else {
+            return;
         };
 
         if let Some(accepts) = input.accepts.clone() {
@@ -509,3 +621,16 @@ pub struct BlockClickedEvent {
 
 #[derive(Component)]
 pub struct BlockClicked {}
+
+fn logger_system(
+    input_query: Query<(&Input, Entity), With<LogInput>>,
+    output_query: Query<(&Output, Entity), With<LogOutput>>,
+) {
+    for (input, ent) in input_query.iter().filter(|x| !x.0.inventory.is_empty()) {
+        println!("INPUT {:?}: {:#?}", ent, input.inventory);
+    }
+
+    for (output, ent) in output_query.iter().filter(|x| !x.0.inventory.is_empty()) {
+        println!("OUTPUT {:?}: {:#?}", ent, output.inventory);
+    }
+}

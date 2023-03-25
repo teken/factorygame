@@ -40,13 +40,13 @@ pub struct RotationReadOut;
 #[derive(Component)]
 pub struct Player {}
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Clone)]
 pub struct SpawnerOptions {
     pub block_selection: Option<BlockType>,
     pub block_rotation: Direction,
 }
 
-#[derive(Default, PartialEq)]
+#[derive(Default, Reflect, PartialEq, Clone)]
 pub enum Direction {
     #[default]
     North,

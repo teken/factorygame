@@ -1666,6 +1666,7 @@ dependencies = [
  "bevy_obj",
  "bevy_prototype_debug_lines",
  "bevy_rapier3d",
+ "lazy_static",
  "smooth-bevy-cameras",
 ]
 
