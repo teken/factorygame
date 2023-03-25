@@ -255,88 +255,72 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ..Default::default()
                 })
                 .with_children(|builder| {
-                    builder
-                        .spawn(NodeBundle {
-                            style: Style {
-                                padding: UiRect {
-                                    top: Val::Px(1.),
-                                    left: Val::Px(5.),
-                                    right: Val::Px(5.),
-                                    bottom: Val::Px(1.),
+                    text_box(
+                        builder,
+                        BackgroundColor(Color::rgb(0.102, 0.522, 1.)),
+                        (
+                            TextBundle::from_section(
+                                "Overview",
+                                TextStyle {
+                                    font: font.clone(),
+                                    font_size: 24.0,
+                                    color: Color::BLACK,
                                 },
-                                ..Default::default()
-                            },
-                            background_color: BackgroundColor(Color::rgb(0.102, 0.522, 1.)),
-                            ..Default::default()
-                        })
-                        .with_children(|builder| {
-                            builder.spawn((
-                                TextBundle::from_section(
-                                    "Overview",
-                                    TextStyle {
-                                        font: font.clone(),
-                                        font_size: 24.0,
-                                        color: Color::BLACK,
-                                    },
-                                ),
-                                ModeReadOut,
-                            ));
-                        });
-                    builder
-                        .spawn(NodeBundle {
-                            style: Style {
-                                padding: UiRect {
-                                    top: Val::Px(1.),
-                                    left: Val::Px(5.),
-                                    right: Val::Px(5.),
-                                    bottom: Val::Px(1.),
+                            ),
+                            ModeReadOut,
+                        ),
+                    );
+                    text_box(
+                        builder,
+                        BackgroundColor(Color::rgb(0.102, 1., 0.14)),
+                        (
+                            TextBundle::from_section(
+                                "North",
+                                TextStyle {
+                                    font: font.clone(),
+                                    font_size: 24.0,
+                                    color: Color::BLACK,
                                 },
-                                ..Default::default()
-                            },
-                            background_color: BackgroundColor(Color::rgb(0.102, 1., 0.14)),
-                            ..Default::default()
-                        })
-                        .with_children(|builder| {
-                            builder.spawn((
-                                TextBundle::from_section(
-                                    "North",
-                                    TextStyle {
-                                        font: font.clone(),
-                                        font_size: 24.0,
-                                        color: Color::BLACK,
-                                    },
-                                ),
-                                RotationReadOut,
-                            ));
-                        });
-                    builder
-                        .spawn(NodeBundle {
-                            style: Style {
-                                padding: UiRect {
-                                    top: Val::Px(1.),
-                                    left: Val::Px(5.),
-                                    right: Val::Px(5.),
-                                    bottom: Val::Px(1.),
+                            ),
+                            RotationReadOut,
+                        ),
+                    );
+                    text_box(
+                        builder,
+                        BackgroundColor(Color::rgb(1., 0.1, 0.14)),
+                        (
+                            TextBundle::from_section(
+                                "Nothing",
+                                TextStyle {
+                                    font: font.clone(),
+                                    font_size: 24.0,
+                                    color: Color::BLACK,
                                 },
-                                ..Default::default()
-                            },
-                            background_color: BackgroundColor(Color::rgb(1., 0.1, 0.14)),
-                            ..Default::default()
-                        })
-                        .with_children(|builder| {
-                            builder.spawn((
-                                TextBundle::from_section(
-                                    "Nothing",
-                                    TextStyle {
-                                        font,
-                                        font_size: 24.0,
-                                        color: Color::BLACK,
-                                    },
-                                ),
-                                BlockReadOut,
-                            ));
-                        });
+                            ),
+                            BlockReadOut,
+                        ),
+                    );
                 });
+        });
+}
+
+fn text_box(builder: &mut ChildBuilder, background_color: BackgroundColor, bundle: impl Bundle) {
+    builder
+        .spawn(NodeBundle {
+            style: Style {
+                padding: UiRect {
+                    top: Val::Px(1.),
+                    left: Val::Px(5.),
+                    right: Val::Px(5.),
+                    bottom: Val::Px(1.),
+                },
+                ..Default::default()
+            },
+            background_color,
+            ..Default::default()
+        })
+        .with_children(|builder| {
+            builder.spawn(bundle);
         });
 }
 
