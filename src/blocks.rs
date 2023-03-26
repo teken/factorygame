@@ -52,31 +52,68 @@ pub struct LogOutput;
 
 impl Output {
     pub fn contains(&self, accept: &ItemStack) -> bool {
-        self.inventory
+        let total_local_quantity = self
+            .inventory
             .iter()
-            .any(|item| item.item_type == accept.item_type && item.quantity >= accept.quantity)
+            .filter_map(|item| {
+                if item.item_type == accept.item_type {
+                    Some(item.quantity)
+                } else {
+                    None
+                }
+            })
+            .sum::<u32>();
+
+        return total_local_quantity < accept.quantity;
     }
 
     pub fn transfer(&mut self, accept: &ItemStack, destination: &mut Vec<ItemStack>) {
-        // todo : cover when requested quantity is more than a single stack size
-        let Some(mut item) = self
+        let total_local_quantity = self
             .inventory
-            .iter_mut()
-            .find(|item| item.item_type == accept.item_type && item.quantity >= accept.quantity)
-            else {
-                return;
-        };
-        item.quantity -= accept.quantity;
+            .iter()
+            .filter_map(|item| {
+                if item.item_type == accept.item_type {
+                    Some(item.quantity)
+                } else {
+                    None
+                }
+            })
+            .sum::<u32>();
 
-        let item_c = item.clone();
-        if item.quantity == 0 {
-            let index = self.inventory.iter().position(|x| x == &item_c);
-            if let Some(index) = index {
-                self.inventory.remove(index);
+        if total_local_quantity < accept.quantity {
+            return;
+        }
+
+        // todo: check destination has space for the quantity of items and of they need to be split across multiple stacks
+
+        let mut amount_left_to_take: u32 = accept.quantity;
+
+        for item in self.inventory.iter_mut() {
+            if amount_left_to_take == 0 {
+                break;
+            }
+            if item.item_type != accept.item_type || item.quantity == 0 {
+                continue;
+            }
+            if item.quantity > amount_left_to_take {
+                item.quantity -= amount_left_to_take;
+                destination.push(ItemStack {
+                    item_type: item.item_type.clone(),
+                    quantity: amount_left_to_take,
+                });
+                amount_left_to_take = 0;
+            } else if item.quantity < amount_left_to_take {
+                destination.push(item.clone());
+                amount_left_to_take -= item.quantity;
+                item.quantity = 0;
+            } else {
+                destination.push(item.clone());
+                amount_left_to_take -= item.quantity;
+                item.quantity = 0;
             }
         }
-        // todo: cover when stack size is greater than 1 stack or the distation doesn't have space
-        destination.push(accept.clone());
+
+        self.inventory.retain(|item| item.quantity > 0);
     }
 
     // todo: same as above
