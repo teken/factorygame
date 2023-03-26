@@ -1,5 +1,5 @@
 use bevy::{input::mouse::MouseWheel, math::vec3, prelude::*, render::primitives::Aabb};
-use bevy_mod_picking::{Hover, PickableBundle, PickingRaycastSet};
+use bevy_mod_picking::{Highlighting, Hover, PickableBundle, PickingRaycastSet};
 use bevy_prototype_debug_lines::DebugLines;
 
 use crate::{
@@ -33,17 +33,23 @@ const GRID_CELL_SIZE: usize = 1;
 fn setup_build_plane(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut ambient_light: ResMut<AmbientLight>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    let mat = materials.add(Color::NONE.into());
     commands.spawn((
         PbrBundle {
             mesh: meshes.add(shape::Plane::from_size(10000.0).into()),
-            material: materials.add(Color::NONE.into()),
+            material: mat.clone(),
             ..Default::default()
         },
         BuildPlane {},
         PickableBundle::default(),
+        Highlighting {
+            initial: mat.clone(),
+            hovered: Some(mat.clone()),
+            pressed: Some(mat.clone()),
+            selected: Some(mat.clone()),
+        },
         Name::new("Build Plane"),
     ));
 }
