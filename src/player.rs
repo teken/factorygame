@@ -5,9 +5,9 @@ use bevy::{
     prelude::*,
     window::PrimaryWindow,
 };
-use bevy_mod_raycast::{DefaultPluginState, RaycastSource};
+use bevy_mod_picking::PickingCameraBundle;
 
-use crate::{blocks::BlockType, MyRaycastSet};
+use crate::{blocks::BlockType, grid::GridSelectMode};
 
 pub struct PlayerPlugin;
 
@@ -17,7 +17,6 @@ impl Plugin for PlayerPlugin {
         app.add_startup_system(setup_hud);
         app.add_system(player_controller);
         app.add_system(player_hotkeys);
-        app.add_state::<Modes>();
         app.add_system(mode_ui_system);
         app.add_system(rotation_ui_system);
         app.add_system(block_ui_system);
@@ -46,8 +45,10 @@ pub struct Player {}
 
 #[derive(Component, Default, Clone)]
 pub struct SpawnerOptions {
-    pub block_selection: Option<BlockType>,
+    pub block_selection: BlockType,
     pub block_rotation: Direction,
+    pub grid_select_mode: GridSelectMode,
+    pub player_mode: Modes,
 }
 
 #[derive(Default, Reflect, PartialEq, Clone)]
@@ -204,7 +205,7 @@ fn spawn_player(mut commands: Commands) {
     let translation = Vec3::new(-2.0, 2.5, 5.0);
     let radius = translation.length();
 
-    commands.insert_resource(DefaultPluginState::<MyRaycastSet>::default().with_debug_cursor());
+    // commands.insert_resource(DefaultPluginState::<MyRaycastSet>::default().with_debug_cursor());
     commands.spawn((
         Name::new("Player"),
         Player {},
@@ -217,7 +218,7 @@ fn spawn_player(mut commands: Commands) {
             radius,
             ..Default::default()
         },
-        RaycastSource::<MyRaycastSet>::default(),
+        PickingCameraBundle::default(), // RaycastSource::<MyRaycastSet>::default(),
     ));
 }
 
@@ -322,25 +323,20 @@ fn text_box(builder: &mut ChildBuilder, background_color: BackgroundColor, bundl
         });
 }
 
-fn player_hotkeys(
-    keys: Res<Input<KeyCode>>,
-    mut query: Query<&mut SpawnerOptions, With<Player>>,
-    modes_state: Res<State<Modes>>,
-    mut next_modes_state: ResMut<NextState<Modes>>,
-) {
+fn player_hotkeys(keys: Res<Input<KeyCode>>, mut query: Query<&mut SpawnerOptions, With<Player>>) {
     for mut ele in query.iter_mut() {
         if keys.just_pressed(KeyCode::Key1) {
-            ele.block_selection = Some(BlockType::Debug);
+            ele.block_selection = BlockType::Debug;
         } else if keys.just_pressed(KeyCode::Key2) {
-            ele.block_selection = Some(BlockType::Furnace);
+            ele.block_selection = BlockType::Furnace;
         } else if keys.just_pressed(KeyCode::Key3) {
-            ele.block_selection = Some(BlockType::Conveyor);
+            ele.block_selection = BlockType::Conveyor;
         } else if keys.just_pressed(KeyCode::Key4) {
-            ele.block_selection = Some(BlockType::Splitter);
+            ele.block_selection = BlockType::Splitter;
         } else if keys.just_pressed(KeyCode::Key5) {
-            ele.block_selection = Some(BlockType::Storage);
+            ele.block_selection = BlockType::Storage;
         } else if keys.just_pressed(KeyCode::Key6) {
-            ele.block_selection = Some(BlockType::Grabber);
+            ele.block_selection = BlockType::Grabber;
         } else if keys.just_pressed(KeyCode::R) {
             ele.block_rotation = match ele.block_rotation {
                 Direction::North => Direction::East,
@@ -351,21 +347,27 @@ fn player_hotkeys(
                 Direction::Down => Direction::North,
             }
         } else if keys.just_pressed(KeyCode::Q) {
-            next_modes_state.set(match modes_state.0 {
+            ele.player_mode = match ele.player_mode {
                 Modes::Overview => Modes::Build,
                 Modes::Build => Modes::Destroy,
                 Modes::Destroy => Modes::Overview,
-            });
+            };
+            ele.grid_select_mode = match ele.player_mode {
+                Modes::Overview => GridSelectMode::Block,
+                Modes::Build => GridSelectMode::OnTopOfBlock,
+                Modes::Destroy => GridSelectMode::Block,
+            }
         }
     }
 }
 
 fn mode_ui_system(
     mut text_query: Query<&mut Text, With<ModeReadOut>>,
-    modes_state: Res<State<Modes>>,
+    player_query: Query<&SpawnerOptions, With<Player>>,
 ) {
+    let Ok(spawn_options) = player_query.get_single() else { return;};
     for mut text in text_query.iter_mut() {
-        text.sections[0].value = match modes_state.0 {
+        text.sections[0].value = match spawn_options.player_mode {
             Modes::Overview => "Overview",
             Modes::Build => "Build",
             Modes::Destroy => "Destroy",
@@ -399,15 +401,12 @@ fn block_ui_system(
     let Ok(spawn_options) = player_query.get_single() else { return;};
     for mut text in text_query.iter_mut() {
         text.sections[0].value = match spawn_options.block_selection {
-            Some(block) => match block {
-                BlockType::Debug => "Debug",
-                BlockType::Furnace => "Furnace",
-                BlockType::Conveyor => "Conveyor",
-                BlockType::Splitter => "Splitter",
-                BlockType::Storage => "Storage",
-                BlockType::Grabber => "Grabber",
-            },
-            None => "Nothing",
+            BlockType::Debug => "Debug",
+            BlockType::Furnace => "Furnace",
+            BlockType::Conveyor => "Conveyor",
+            BlockType::Splitter => "Splitter",
+            BlockType::Storage => "Storage",
+            BlockType::Grabber => "Grabber",
         }
         .to_string();
     }

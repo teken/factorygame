@@ -14,6 +14,7 @@ bevy-inspector-egui = "0.18"
 bevy_obj = "0.10.0"
 bevy_mod_raycast = "0.8.0"
 lazy_static = "1.4.0"
+bevy_mod_picking = "0.12.0"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

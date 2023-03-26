@@ -1,12 +1,12 @@
-use bevy::{math::vec3, prelude::*, utils::HashMap};
-use bevy_mod_raycast::RaycastMesh;
+use bevy::{math::vec3, prelude::*};
+use bevy_mod_picking::PickableBundle;
 use bevy_prototype_debug_lines::DebugShapes;
 
 use crate::{
+    grid::GridCellHoveredEvent,
     materials::{self, ItemStack, Reaction},
     player::{self, Modes, Player, SpawnerOptions},
     reactions::PROCESS_IRON_TO_GOLD,
-    MyRaycastSet,
 };
 
 pub struct BlockPlugin;
@@ -19,7 +19,6 @@ impl Plugin for BlockPlugin {
         // app.add_system(input_feed_system);
         app.add_system(grabber_system);
         app.add_system(display_build_ghost_system);
-        app.add_system(block_clicked_event_handler);
         app.add_system(highlight_selected_block);
         app.add_system(logger_system);
     }
@@ -133,8 +132,9 @@ pub struct Process {
     // pub timer: Timer,
 }
 
-#[derive(Debug, Clone, Reflect, Copy)]
+#[derive(Debug, Clone, Reflect, Copy, Default)]
 pub enum BlockType {
+    #[default]
     Debug,
     Furnace,
     Conveyor,
@@ -197,7 +197,7 @@ impl Spawn for BlockType {
                     block_type: BlockType::Debug,
                     direction: spawner_options.block_rotation.clone(),
                 },
-                RaycastMesh::<MyRaycastSet>::default(),
+                PickableBundle::default(),
             )),
             BlockType::Furnace => commands.spawn((
                 PbrBundle {
@@ -222,7 +222,7 @@ impl Spawn for BlockType {
                 Process {
                     reaction: Some(PROCESS_IRON_TO_GOLD.clone()),
                 },
-                RaycastMesh::<MyRaycastSet>::default(),
+                PickableBundle::default(),
             )),
             BlockType::Conveyor => commands.spawn((
                 PbrBundle {
@@ -244,7 +244,7 @@ impl Spawn for BlockType {
                 },
                 Input::default(),
                 Output::default(),
-                RaycastMesh::<MyRaycastSet>::default(),
+                PickableBundle::default(),
             )),
             BlockType::Splitter => commands.spawn((
                 PbrBundle {
@@ -266,7 +266,7 @@ impl Spawn for BlockType {
                 },
                 Input::default(),
                 Output::default(),
-                RaycastMesh::<MyRaycastSet>::default(),
+                PickableBundle::default(),
             )),
             BlockType::Storage => commands.spawn((
                 PbrBundle {
@@ -294,7 +294,7 @@ impl Spawn for BlockType {
                     ],
                 },
                 LogInput::default(),
-                RaycastMesh::<MyRaycastSet>::default(),
+                PickableBundle::default(),
             )),
             BlockType::Grabber => commands.spawn((
                 SceneBundle {
@@ -313,7 +313,7 @@ impl Spawn for BlockType {
                     block_type: BlockType::Grabber,
                     direction: spawner_options.block_rotation.clone(),
                 },
-                RaycastMesh::<MyRaycastSet>::default(),
+                PickableBundle::default(),
             )),
         };
     }
@@ -489,179 +489,77 @@ fn grabber_system(
 }
 
 fn display_build_ghost_system(
-    objects_query: Query<(&Block, Entity)>,
-    mode_states: Res<State<Modes>>,
     mut shapes: ResMut<DebugShapes>,
-    intersect_query: Query<&bevy_mod_raycast::Intersection<MyRaycastSet>>,
     player_query: Query<&SpawnerOptions, With<Player>>,
+    mut grid_cell_hover_events: EventReader<GridCellHoveredEvent>,
 ) {
-    if mode_states.0 != Modes::Build {
+    let Ok(spawner_opts) = player_query.get_single() else {
+        return;
+    };
+
+    if spawner_opts.player_mode != Modes::Build {
         return;
     }
 
-    let Ok(inter) = intersect_query.get_single() else {
-        return;
-    };
+    for ele in grid_cell_hover_events.iter() {
+        let base = ele.grid_cell.floor() + vec3(0.5, 0.5, 0.5);
 
-    let Some(position) = inter.position() else {
-        return;
-    };
+        match spawner_opts.block_rotation {
+            player::Direction::North => {
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.3, 0.1, 0.1), base + vec3(-0.3, -0.1, -0.1));
 
-    let mod_coord = |c: f32| {
-        if (c - c.floor()).abs() < 0.001 {
-            c.floor()
-        } else if (c - c.ceil()).abs() < 0.001 {
-            c.ceil()
-        } else {
-            c
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.5, 0.5, 0.5), base + vec3(0.3, -0.5, -0.5));
+            }
+            player::Direction::South => {
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.3, 0.1, 0.1), base + vec3(-0.3, -0.1, -0.1));
+
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(-0.5, 0.5, 0.5), base + vec3(-0.3, -0.5, -0.5));
+            }
+            player::Direction::East => {
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.1, 0.1, 0.3), base + vec3(-0.1, -0.1, -0.3));
+
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.5, 0.5, 0.5), base + vec3(-0.5, -0.5, 0.3));
+            }
+            player::Direction::West => {
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.1, 0.1, 0.3), base + vec3(-0.1, -0.1, -0.3));
+
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.5, 0.5, -0.5), base + vec3(-0.5, -0.5, -0.3));
+            }
+            player::Direction::Up => {
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.1, 0.3, 0.1), base + vec3(-0.1, -0.3, -0.1));
+
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.5, 0.5, 0.5), base + vec3(-0.5, 0.3, -0.5));
+            }
+            player::Direction::Down => {
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.1, 0.3, 0.1), base + vec3(-0.1, -0.3, -0.1));
+
+                shapes
+                    .cuboid()
+                    .min_max(base + vec3(0.5, -0.5, 0.5), base + vec3(-0.5, -0.3, -0.5));
+            }
         }
-    };
-
-    // a function that take 3 floats and return the number closest to the whole number
-    // let d = |x: f32, y: f32, z: f32| -> player::Direction {
-    //     let f_x = (x - x.floor()).abs();
-    //     let f_y = (y - y.floor()).abs();
-    //     let f_z = (z - z.floor()).abs();
-    //     let c_x = (x - x.ceil()).abs();
-    //     let c_y = (y - y.ceil()).abs();
-    //     let c_z = (z - z.ceil()).abs();
-
-    //     // println!("{} {} {} : {} {} {}", f_x, f_y, f_z, c_x, c_y, c_z);
-
-    //     return if f_x == c_x {
-    //         player::Direction::North
-    //     } else if f_y == c_y {
-    //         player::Direction::Up
-    //     } else {
-    //         //if f_z == c_z
-    //         player::Direction::East
-    //     };
-    // };
-
-    let modified_x = mod_coord(position.x);
-    let modified_y = mod_coord(position.y);
-    let modified_z = mod_coord(position.z);
-
-    // let di = d(modified_x, modified_y, modified_z);
-
-    let current_block = objects_query.iter().find(|(block, _)| {
-        modified_x >= block.min.x
-            && modified_x <= block.max.x
-            && modified_y >= block.min.y
-            && modified_y <= block.max.y
-            && modified_z >= block.min.z
-            && modified_z <= block.max.z
-    });
-
-    if current_block.is_some() {
-        return;
-    }
-
-    // println!("{} {} {}", modified_x, modified_y, modified_z);
-
-    // use the position detect which face of the block was clicked
-
-    let modified_position = vec3(modified_x, modified_y, modified_z);
-    // shapes.cuboid().min_max(
-    //     modified_position.floor(),
-    //     (modified_position
-    //         + match di {
-    //             player::Direction::North => vec3(0.1, 0., 0.),
-    //             player::Direction::South => vec3(-0.1, 0., 0.),
-    //             player::Direction::East => vec3(0., 0., 0.1),
-    //             player::Direction::West => vec3(0., 0., -0.1),
-    //             player::Direction::Up => vec3(0., 0.1, 0.),
-    //             player::Direction::Down => vec3(0., -0.1, 0.),
-    //         })
-    //     .ceil(),
-    // );
-
-    let Ok(spawner_options) = player_query.get_single() else {
-        return;
-    };
-
-    let base = modified_position.floor() + vec3(0.5, 0.5, 0.5);
-
-    match spawner_options.block_rotation {
-        player::Direction::North => {
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.3, 0.1, 0.1), base + vec3(-0.3, -0.1, -0.1));
-
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.5, 0.5, 0.5), base + vec3(0.3, -0.5, -0.5));
-        }
-        player::Direction::South => {
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.3, 0.1, 0.1), base + vec3(-0.3, -0.1, -0.1));
-
-            shapes
-                .cuboid()
-                .min_max(base + vec3(-0.5, 0.5, 0.5), base + vec3(-0.3, -0.5, -0.5));
-        }
-        player::Direction::East => {
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.1, 0.1, 0.3), base + vec3(-0.1, -0.1, -0.3));
-
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.5, 0.5, 0.5), base + vec3(-0.5, -0.5, 0.3));
-        }
-        player::Direction::West => {
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.1, 0.1, 0.3), base + vec3(-0.1, -0.1, -0.3));
-
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.5, 0.5, -0.5), base + vec3(-0.5, -0.5, -0.3));
-        }
-        player::Direction::Up => {
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.1, 0.3, 0.1), base + vec3(-0.1, -0.3, -0.1));
-
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.5, 0.5, 0.5), base + vec3(-0.5, 0.3, -0.5));
-        }
-        player::Direction::Down => {
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.1, 0.3, 0.1), base + vec3(-0.1, -0.3, -0.1));
-
-            shapes
-                .cuboid()
-                .min_max(base + vec3(0.5, -0.5, 0.5), base + vec3(-0.5, -0.3, -0.5));
-        }
-    }
-}
-
-fn block_clicked_event_handler(
-    mut commands: Commands,
-    mut ev_blockclicked: EventReader<BlockClickedEvent>,
-    objects_query: Query<(&Block, Entity)>,
-    current_selected_query: Query<(&Block, Entity), With<BlockClicked>>,
-) {
-    for ele in ev_blockclicked.iter() {
-        let i = ele.world_pos;
-        let Some(clicked) = objects_query.iter().find(|(block, _)| {
-            i.x >= block.min.x
-                && i.x <= block.max.x
-                && i.y >= block.min.y
-                && i.y <= block.max.y
-                && i.z >= block.min.z
-                && i.z <= block.max.z
-        }) else {
-            return;
-        };
-        for ele in current_selected_query.iter() {
-            commands.entity(ele.1).remove::<BlockClicked>();
-        }
-        commands.entity(clicked.1).insert(BlockClicked {});
     }
 }
 
