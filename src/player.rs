@@ -5,21 +5,22 @@ use bevy::{
     prelude::*,
     window::PrimaryWindow,
 };
+use bevy_inspector_egui::bevy_egui::{egui, EguiContext, EguiContexts};
 use bevy_mod_picking::PickingCameraBundle;
 
-use crate::{blocks::BlockType, grid::GridSelectMode};
+use crate::{
+    blocks::{Block, BlockClicked, BlockType},
+    grid::GridSelectMode,
+};
 
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(spawn_player);
-        app.add_startup_system(setup_hud);
+        app.add_system(dev_ui);
         app.add_system(player_controller);
         app.add_system(player_hotkeys);
-        app.add_system(mode_ui_system);
-        app.add_system(rotation_ui_system);
-        app.add_system(block_ui_system);
     }
 }
 
@@ -51,7 +52,7 @@ pub struct SpawnerOptions {
     pub player_mode: Modes,
 }
 
-#[derive(Default, Reflect, PartialEq, Clone)]
+#[derive(Default, Reflect, PartialEq, Clone, Debug)]
 pub enum Direction {
     #[default]
     North,
@@ -225,104 +226,6 @@ fn spawn_player(mut commands: Commands) {
 #[derive(Component)]
 pub struct UICamera;
 
-fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let font = asset_server.load("fonts/FiraSans-Bold.ttf");
-    commands
-        .spawn((
-            Name::new("Player UI"),
-            NodeBundle {
-                style: Style {
-                    // fill the entire window
-                    size: Size::all(Val::Percent(100.)),
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Center,
-                    ..Default::default()
-                },
-                background_color: BackgroundColor(Color::NONE),
-                ..Default::default()
-            },
-        ))
-        .with_children(|builder| {
-            // spawn the key
-            builder
-                .spawn(NodeBundle {
-                    style: Style {
-                        flex_direction: FlexDirection::Row,
-                        margin: UiRect::top(Val::Px(5.)),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                })
-                .with_children(|builder| {
-                    text_box(
-                        builder,
-                        BackgroundColor(Color::rgb(0.102, 0.522, 1.)),
-                        (
-                            TextBundle::from_section(
-                                "Overview",
-                                TextStyle {
-                                    font: font.clone(),
-                                    font_size: 24.0,
-                                    color: Color::BLACK,
-                                },
-                            ),
-                            ModeReadOut,
-                        ),
-                    );
-                    text_box(
-                        builder,
-                        BackgroundColor(Color::rgb(0.102, 1., 0.14)),
-                        (
-                            TextBundle::from_section(
-                                "North",
-                                TextStyle {
-                                    font: font.clone(),
-                                    font_size: 24.0,
-                                    color: Color::BLACK,
-                                },
-                            ),
-                            RotationReadOut,
-                        ),
-                    );
-                    text_box(
-                        builder,
-                        BackgroundColor(Color::rgb(1., 0.1, 0.14)),
-                        (
-                            TextBundle::from_section(
-                                "Nothing",
-                                TextStyle {
-                                    font: font.clone(),
-                                    font_size: 24.0,
-                                    color: Color::BLACK,
-                                },
-                            ),
-                            BlockReadOut,
-                        ),
-                    );
-                });
-        });
-}
-
-fn text_box(builder: &mut ChildBuilder, background_color: BackgroundColor, bundle: impl Bundle) {
-    builder
-        .spawn(NodeBundle {
-            style: Style {
-                padding: UiRect {
-                    top: Val::Px(1.),
-                    left: Val::Px(5.),
-                    right: Val::Px(5.),
-                    bottom: Val::Px(1.),
-                },
-                ..Default::default()
-            },
-            background_color,
-            ..Default::default()
-        })
-        .with_children(|builder| {
-            builder.spawn(bundle);
-        });
-}
-
 fn player_hotkeys(keys: Res<Input<KeyCode>>, mut query: Query<&mut SpawnerOptions, With<Player>>) {
     for mut ele in query.iter_mut() {
         if keys.just_pressed(KeyCode::Key1) {
@@ -361,53 +264,64 @@ fn player_hotkeys(keys: Res<Input<KeyCode>>, mut query: Query<&mut SpawnerOption
     }
 }
 
-fn mode_ui_system(
-    mut text_query: Query<&mut Text, With<ModeReadOut>>,
-    player_query: Query<&SpawnerOptions, With<Player>>,
+fn dev_ui(
+    mut egui_ctx: EguiContexts,
+    mut player_query: Query<&mut SpawnerOptions, With<Player>>,
+    block_selected_query: Query<(&Block, Entity), With<BlockClicked>>,
 ) {
-    let Ok(spawn_options) = player_query.get_single() else { return;};
-    for mut text in text_query.iter_mut() {
-        text.sections[0].value = match spawn_options.player_mode {
-            Modes::Overview => "Overview",
-            Modes::Build => "Build",
-            Modes::Destroy => "Destroy",
-        }
-        .to_string();
-    }
-}
+    let Ok(mut spawn_options) = player_query.get_single_mut() else { return; };
+    let mut mode_value = spawn_options.player_mode.clone();
+    let mut direction_value = spawn_options.block_rotation.clone();
+    let mut block_value = spawn_options.block_selection.clone();
 
-fn rotation_ui_system(
-    mut text_query: Query<&mut Text, With<RotationReadOut>>,
-    player_query: Query<&SpawnerOptions, With<Player>>,
-) {
-    let Ok(spawn_options) = player_query.get_single() else { return;};
-    for mut text in text_query.iter_mut() {
-        text.sections[0].value = match spawn_options.block_rotation {
-            Direction::North => "North",
-            Direction::East => "East",
-            Direction::South => "South",
-            Direction::West => "West",
-            Direction::Up => "Up",
-            Direction::Down => "Down",
-        }
-        .to_string();
-    }
-}
+    egui::SidePanel::right("selected_block_panel")
+        .default_width(200.0)
+        .show(&egui_ctx.ctx_mut(), |ui| {
+            ui.group(|ui| {
+                ui.heading("Player Settings");
+                ui.separator();
+                ui.label("Mode");
+                egui::ComboBox::from_id_source("mode")
+                    .selected_text(format!("{:?}", mode_value))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut mode_value, Modes::Overview, "Overview");
+                        ui.selectable_value(&mut mode_value, Modes::Build, "Build");
+                        ui.selectable_value(&mut mode_value, Modes::Destroy, "Destroy");
+                    });
+                ui.label("Rotation");
+                egui::ComboBox::from_id_source("rotation")
+                    .selected_text(format!("{:?}", direction_value))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut direction_value, Direction::North, "North");
+                        ui.selectable_value(&mut direction_value, Direction::East, "East");
+                        ui.selectable_value(&mut direction_value, Direction::South, "South");
+                        ui.selectable_value(&mut direction_value, Direction::West, "West");
+                        ui.selectable_value(&mut direction_value, Direction::Up, "Up");
+                        ui.selectable_value(&mut direction_value, Direction::Down, "Down");
+                    });
+                ui.label("Block");
+                egui::ComboBox::from_id_source("block")
+                    .selected_text(format!("{:?}", block_value))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut block_value, BlockType::Debug, "Debug");
+                        ui.selectable_value(&mut block_value, BlockType::Furnace, "Furnace");
+                        ui.selectable_value(&mut block_value, BlockType::Conveyor, "Conveyor");
+                        ui.selectable_value(&mut block_value, BlockType::Splitter, "Splitter");
+                        ui.selectable_value(&mut block_value, BlockType::Storage, "Storage");
+                        ui.selectable_value(&mut block_value, BlockType::Grabber, "Grabber");
+                    });
+            });
+            block_selected_query.iter().for_each(|(block, _)| {
+                ui.group(|ui| {
+                    ui.heading("Selected Block");
+                    ui.separator();
+                    ui.label(format!("Block Type: {:?}", block.block_type));
+                    ui.label(format!("Block Rotation: {:?}", block.direction));
+                });
+            });
+        });
 
-fn block_ui_system(
-    mut text_query: Query<&mut Text, With<BlockReadOut>>,
-    player_query: Query<&SpawnerOptions, With<Player>>,
-) {
-    let Ok(spawn_options) = player_query.get_single() else { return;};
-    for mut text in text_query.iter_mut() {
-        text.sections[0].value = match spawn_options.block_selection {
-            BlockType::Debug => "Debug",
-            BlockType::Furnace => "Furnace",
-            BlockType::Conveyor => "Conveyor",
-            BlockType::Splitter => "Splitter",
-            BlockType::Storage => "Storage",
-            BlockType::Grabber => "Grabber",
-        }
-        .to_string();
-    }
+    spawn_options.player_mode = mode_value;
+    spawn_options.block_rotation = direction_value;
+    spawn_options.block_selection = block_value;
 }

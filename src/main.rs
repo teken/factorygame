@@ -35,12 +35,7 @@ fn main() {
         .run();
 }
 
-fn setup_lights(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut ambient_light: ResMut<AmbientLight>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
+fn setup_lights(mut commands: Commands, mut ambient_light: ResMut<AmbientLight>) {
     // light
     ambient_light.color = Color::WHITE;
     ambient_light.brightness = 1.0;

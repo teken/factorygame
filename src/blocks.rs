@@ -132,7 +132,7 @@ pub struct Process {
     // pub timer: Timer,
 }
 
-#[derive(Debug, Clone, Reflect, Copy, Default)]
+#[derive(Debug, Clone, Reflect, Copy, Default, PartialEq, Eq, Hash)]
 pub enum BlockType {
     #[default]
     Debug,
@@ -323,7 +323,7 @@ fn furnace_system(
     mut query: Query<(&mut Input, &mut Output, &mut Process), With<Furnace>>,
     // time: Res<Time>,
 ) {
-    for (mut input, mut output, mut process) in query.iter_mut() {
+    for (mut input, mut output, process) in query.iter_mut() {
         if !process.reaction.is_some() {
             continue;
         };
@@ -574,11 +574,6 @@ fn highlight_selected_block(
             .color(Color::rgba(0.0, 0.0, 1.0, 0.5))
             .duration(0.);
     }
-}
-
-pub struct BlockClickedEvent {
-    pub grid_cell: Vec3,
-    pub world_pos: Vec3,
 }
 
 #[derive(Component)]
