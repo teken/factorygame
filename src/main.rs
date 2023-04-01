@@ -30,6 +30,7 @@ fn main() {
         .add_plugin(PlayerPlugin)
         .add_plugin(DebugCursorPickingPlugin)
         .add_plugin(BlockPlugin)
+        .add_plugin(materials::MaterialPlugin)
         .add_startup_system(setup_lights)
         .add_system(bevy::window::close_on_esc)
         .run();

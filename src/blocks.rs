@@ -1,4 +1,4 @@
-use bevy::{math::vec3, prelude::*};
+use bevy::{math::vec3, prelude::*, render::primitives::Aabb};
 use bevy_mod_picking::PickableBundle;
 use bevy_prototype_debug_lines::DebugShapes;
 
@@ -21,6 +21,11 @@ impl Plugin for BlockPlugin {
         app.add_system(display_build_ghost_system);
         app.add_system(highlight_selected_block);
         app.add_system(logger_system);
+        app.add_system(display_dep_chains);
+        app.register_type::<Block>()
+            .register_type::<Input>()
+            .register_type::<Output>()
+            .register_type::<Process>();
     }
 }
 
@@ -32,13 +37,13 @@ pub struct Block {
     pub direction: player::Direction,
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Reflect)]
 pub struct Input {
     pub accepts: Option<ItemStack>,
     pub inventory: Vec<ItemStack>,
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Reflect)]
 pub struct Output {
     pub inventory: Vec<ItemStack>,
 }
@@ -125,7 +130,7 @@ impl Output {
     }
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Reflect)]
 pub struct Process {
     pub reaction: Option<Reaction>,
     // pub time: f32,
@@ -415,6 +420,7 @@ fn grabber_system(
     grabber_query: Query<&Block, With<Grabber>>,
     mut input_query: Query<(&Block, &mut Input)>,
     mut output_query: Query<(&Block, &mut Output)>,
+    mut shapes: ResMut<DebugShapes>,
 ) {
     for block in grabber_query.iter() {
         let input;
@@ -470,11 +476,11 @@ fn grabber_system(
             }
         }
 
-        let Some((_, mut input)) = input else {
+        let Some((in_block, mut input)) = input else {
             return;
         };
 
-        let Some((_, mut output)) = output else {
+        let Some((out_block, mut output)) = output else {
             return;
         };
 
@@ -589,5 +595,51 @@ fn logger_system(
 
     for (output, ent) in output_query.iter().filter(|x| !x.0.inventory.is_empty()) {
         println!("OUTPUT {:?}: {:#?}", ent, output.inventory);
+    }
+}
+
+fn display_dep_chains(
+    mut shapes: ResMut<DebugShapes>,
+    input_query: Query<(&GlobalTransform, &Aabb, &Block, Entity), With<Input>>,
+    output_query: Query<(&GlobalTransform, &Aabb, &Block, Entity), With<Output>>,
+) {
+    for (trans, aabb, block, entity) in input_query.iter() {
+        let output = output_query.iter().find(|(t, a, b, e)| {
+            // entity != *e
+            match block.direction {
+                player::Direction::North => {
+                    b.min.x == block.min.x - 1. && b.min.y == block.min.y && b.min.z == block.min.z
+                }
+                player::Direction::South => {
+                    b.min.x == block.min.x + 1. && b.min.y == block.min.y && b.min.z == block.min.z
+                }
+                player::Direction::East => {
+                    b.min.x == block.min.x && b.min.y == block.min.y && b.min.z == block.min.z - 1.
+                }
+                player::Direction::West => {
+                    b.min.x == block.min.x && b.min.y == block.min.y && b.min.z == block.min.z + 1.
+                }
+                player::Direction::Up => {
+                    b.min.x == block.min.x && b.min.y == block.min.y - 1. && b.min.z == block.min.z
+                }
+                player::Direction::Down => {
+                    b.min.x == block.min.x && b.min.y == block.min.y + 1. && b.min.z == block.min.z
+                }
+            }
+        });
+
+        let Some((o_t,o_a,o_block, o_entity)) = output else {
+            continue;
+        };
+
+        println!("{:?} -> {:?}", entity, o_entity);
+
+        shapes
+            .line()
+            .start_end(
+                trans.transform_point(aabb.center.into()),
+                o_t.transform_point(o_a.center.into()),
+            )
+            .gradient(Color::RED, Color::GREEN);
     }
 }

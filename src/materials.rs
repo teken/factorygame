@@ -4,10 +4,17 @@ use lazy_static::lazy_static;
 pub struct MaterialPlugin;
 
 impl Plugin for MaterialPlugin {
-    fn build(&self, app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.register_type::<Element>()
+            .register_type::<State>()
+            .register_type::<Reaction>()
+            .register_type::<ItemStack>()
+            .register_type::<ItemStackType>()
+            .register_type::<Energy>();
+    }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Reflect, FromReflect)]
 pub struct Reaction {
     pub input: Vec<ItemStack>,
     pub output: Vec<ItemStack>,
@@ -36,7 +43,7 @@ impl Reaction {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Reflect, FromReflect)]
 pub struct ItemStack {
     pub item_type: ItemStackType,
     pub quantity: u32,
@@ -51,7 +58,7 @@ impl ItemStack {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Reflect, FromReflect)]
 pub enum ItemStackType {
     Element(Element, State),
     Energy(Energy),
@@ -78,7 +85,7 @@ lazy_static! {
         HashMap::from([(ItemStackType::Element(Element::Hydrogen, State::Solid), 100),]);
 }
 
-#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash, FromReflect)]
 pub enum Energy {
     Mechanical,
     Electric,
@@ -122,7 +129,7 @@ impl Energy {
 //     Blackbody,
 // }
 
-#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash, FromReflect)]
 pub enum State {
     Solid,
     Liquid,
@@ -139,7 +146,7 @@ impl State {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash, FromReflect)]
 pub enum Element {
     Hydrogen,
     Helium,
