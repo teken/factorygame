@@ -4,7 +4,7 @@ use bevy_prototype_debug_lines::DebugShapes;
 
 use crate::{
     grid::GridCellHoveredEvent,
-    materials::{self, ItemStack, Reaction},
+    materials::{self, Inventory, ItemStack, Reaction},
     player::{self, Modes, Player, SpawnerOptions},
     reactions::PROCESS_IRON_TO_GOLD,
 };
@@ -40,12 +40,12 @@ pub struct Block {
 #[derive(Component, Default, Reflect)]
 pub struct Input {
     pub accepts: Option<ItemStack>,
-    pub inventory: Vec<ItemStack>,
+    pub inventory: Inventory,
 }
 
 #[derive(Component, Default, Reflect)]
 pub struct Output {
-    pub inventory: Vec<ItemStack>,
+    pub inventory: Inventory,
 }
 
 #[derive(Component, Default, Reflect)]
@@ -53,82 +53,6 @@ pub struct LogInput;
 
 #[derive(Component, Default, Reflect)]
 pub struct LogOutput;
-
-impl Output {
-    pub fn contains(&self, accept: &ItemStack) -> bool {
-        let total_local_quantity = self
-            .inventory
-            .iter()
-            .filter_map(|item| {
-                if item.item_type == accept.item_type {
-                    Some(item.quantity)
-                } else {
-                    None
-                }
-            })
-            .sum::<u32>();
-
-        return total_local_quantity < accept.quantity;
-    }
-
-    pub fn transfer(&mut self, accept: &ItemStack, destination: &mut Vec<ItemStack>) {
-        let total_local_quantity = self
-            .inventory
-            .iter()
-            .filter_map(|item| {
-                if item.item_type == accept.item_type {
-                    Some(item.quantity)
-                } else {
-                    None
-                }
-            })
-            .sum::<u32>();
-
-        if total_local_quantity < accept.quantity {
-            return;
-        }
-
-        // todo: check destination has space for the quantity of items and of they need to be split across multiple stacks
-
-        let mut amount_left_to_take: u32 = accept.quantity;
-
-        for item in self.inventory.iter_mut() {
-            if amount_left_to_take == 0 {
-                break;
-            }
-            if item.item_type != accept.item_type || item.quantity == 0 {
-                continue;
-            }
-            if item.quantity > amount_left_to_take {
-                item.quantity -= amount_left_to_take;
-                destination.push(ItemStack {
-                    item_type: item.item_type.clone(),
-                    quantity: amount_left_to_take,
-                });
-                amount_left_to_take = 0;
-            } else if item.quantity < amount_left_to_take {
-                destination.push(item.clone());
-                amount_left_to_take -= item.quantity;
-                item.quantity = 0;
-            } else {
-                destination.push(item.clone());
-                amount_left_to_take -= item.quantity;
-                item.quantity = 0;
-            }
-        }
-
-        self.inventory.retain(|item| item.quantity > 0);
-    }
-
-    // todo: same as above
-    pub fn transfer_first(&mut self, destination: &mut Vec<ItemStack>) {
-        if self.inventory.is_empty() {
-            return;
-        }
-        let item = self.inventory.remove(0);
-        destination.push(item);
-    }
-}
 
 #[derive(Component, Default, Reflect)]
 pub struct Process {
@@ -296,7 +220,8 @@ impl Spawn for BlockType {
                 Output {
                     inventory: vec![
                         materials::Element::Iron.to_item_stack(materials::State::Solid, 10)
-                    ],
+                    ]
+                    .into(),
                 },
                 LogInput::default(),
                 PickableBundle::default(),
@@ -407,11 +332,11 @@ fn external_conveyor_system(
         };
 
         if let Some(accepts) = input.accepts.clone() {
-            if !output.inventory.is_empty() && output.contains(&accepts) {
-                output.transfer(&accepts, &mut input.inventory);
+            if !output.inventory.is_empty() && output.inventory.contains(&accepts) {
+                output.inventory.transfer(&accepts, &mut input.inventory);
             }
         } else {
-            output.transfer_first(&mut input.inventory);
+            output.inventory.transfer_first(&mut input.inventory);
         }
     }
 }
@@ -485,11 +410,11 @@ fn grabber_system(
         };
 
         if let Some(accepts) = input.accepts.clone() {
-            if !output.inventory.is_empty() && output.contains(&accepts) {
-                output.transfer(&accepts, &mut input.inventory);
+            if !output.inventory.is_empty() && output.inventory.contains(&accepts) {
+                output.inventory.transfer(&accepts, &mut input.inventory);
             }
         } else {
-            output.transfer_first(&mut input.inventory);
+            output.inventory.transfer_first(&mut input.inventory);
         }
     }
 }

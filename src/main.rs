@@ -1,5 +1,6 @@
 mod blocks;
 mod grid;
+mod inventory;
 mod materials;
 mod player;
 mod reactions;
@@ -30,7 +31,7 @@ fn main() {
         .add_plugin(PlayerPlugin)
         .add_plugin(DebugCursorPickingPlugin)
         .add_plugin(BlockPlugin)
-        .add_plugin(materials::MaterialPlugin)
+        .add_plugin(materials::MaterialsPlugin)
         .add_startup_system(setup_lights)
         .add_system(bevy::window::close_on_esc)
         .run();

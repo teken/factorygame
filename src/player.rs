@@ -5,7 +5,7 @@ use bevy::{
     prelude::*,
     window::PrimaryWindow,
 };
-use bevy_inspector_egui::bevy_egui::{egui, EguiContext, EguiContexts};
+use bevy_inspector_egui::bevy_egui::{egui, EguiContexts};
 use bevy_mod_picking::PickingCameraBundle;
 
 use crate::{
