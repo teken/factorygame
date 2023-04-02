@@ -9,3 +9,8 @@ lazy_static! {
         time: 5000,
     };
 }
+
+// todo: turn into file
+enum Reactions {
+    SolidIronToSolidGold(PROCESS_IRON_TO_GOLD),
+}
