@@ -60,6 +60,13 @@ pub struct Process {
     pub timer: Timer,
 }
 
+impl Process {
+    pub fn set_reaction(&mut self, reaction: &Reaction) {
+        self.reaction = Some(reaction.clone());
+        self.timer = Timer::new(reaction.duration.clone(), TimerMode::Repeating);
+    }
+}
+
 #[derive(Debug, Clone, Reflect, Copy, Default, PartialEq, Eq, Hash)]
 pub enum BlockType {
     #[default]
@@ -147,13 +154,7 @@ impl Spawn for BlockType {
                 },
                 Input::default(),
                 Output::default(),
-                Process {
-                    reaction: Some(PROCESS_IRON_TO_GOLD.clone()),
-                    timer: Timer::from_seconds(
-                        PROCESS_IRON_TO_GOLD.time as f32 / 1000.,
-                        TimerMode::Repeating,
-                    ),
-                },
+                Process::default(),
                 PickableBundle::default(),
             )),
             BlockType::Conveyor => commands.spawn((

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::{prelude::*, utils::hashbrown::HashMap};
 use lazy_static::lazy_static;
 
@@ -19,7 +21,7 @@ impl Plugin for MaterialsPlugin {
 pub struct Reaction {
     pub input: Vec<ItemStack>,
     pub output: Vec<ItemStack>,
-    pub time: u32,
+    pub duration: Duration,
 }
 
 impl Reaction {
