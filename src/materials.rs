@@ -19,21 +19,29 @@ impl Plugin for MaterialsPlugin {
 pub struct Reaction {
     pub input: Vec<ItemStack>,
     pub output: Vec<ItemStack>,
+    pub time: u32,
 }
 
 impl Reaction {
     pub fn valid_input(&self, input: &Inventory) -> bool {
+        if input.is_empty() {
+            return false;
+        }
         self.input.iter().all(|item| input.contains(item))
     }
 
     pub fn run(&self, input_inventory: &mut Inventory, output_inventory: &mut Inventory) {
-        if self
-            .input
-            .iter()
-            .any(|item| !input_inventory.contains(item))
-        {
+        if input_inventory.is_empty() {
             return;
         }
+
+        if !self.valid_input(input_inventory) {
+            return;
+        }
+
+        self.input.iter().for_each(|ele| {
+            input_inventory.remove(ele);
+        });
 
         self.output.iter().for_each(|ele| {
             output_inventory.push(ele.clone());
@@ -94,7 +102,7 @@ impl Inventory {
             })
             .sum::<u32>();
 
-        return total_local_quantity < filter.quantity;
+        return total_local_quantity >= filter.quantity;
     }
     pub fn transfer(&mut self, requested: &ItemStack, destination: &mut Inventory) {
         let total_local_quantity = self
@@ -152,7 +160,45 @@ impl Inventory {
     }
 
     pub fn push(&mut self, item: ItemStack) {
-        self.items.push(item);
+        let mut amount_left_to_add: u32 = item.quantity;
+
+        for stack in self.items.iter_mut() {
+            if amount_left_to_add == 0 {
+                break;
+            }
+            if stack.item_type != item.item_type {
+                continue;
+            }
+            if stack.quantity + amount_left_to_add < stack.item_type.quantity_limit() {
+                stack.quantity += amount_left_to_add;
+                amount_left_to_add = 0;
+            } else if stack.quantity + amount_left_to_add > stack.item_type.quantity_limit() {
+                amount_left_to_add -= stack.item_type.quantity_limit() - stack.quantity;
+                stack.quantity = stack.item_type.quantity_limit();
+            } else {
+                amount_left_to_add = 0;
+                stack.quantity = stack.item_type.quantity_limit();
+            }
+        }
+
+        if amount_left_to_add == 0 {
+            return;
+        }
+
+        while amount_left_to_add > 0 {
+            if amount_left_to_add < item.item_type.quantity_limit() {
+                self.items.push(ItemStack {
+                    item_type: item.item_type.clone(),
+                    quantity: amount_left_to_add,
+                });
+                break;
+            }
+            self.items.push(ItemStack {
+                item_type: item.item_type.clone(),
+                quantity: item.item_type.quantity_limit(),
+            });
+            amount_left_to_add -= item.item_type.quantity_limit();
+        }
     }
 
     pub fn pop(&mut self) -> Option<ItemStack> {
@@ -161,6 +207,32 @@ impl Inventory {
 
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
+    }
+
+    pub fn remove(&mut self, item: &ItemStack) {
+        let mut amount_left_to_take: u32 = item.quantity;
+
+        if amount_left_to_take == 0 {
+            return;
+        }
+
+        for stack in self.items.iter_mut() {
+            if stack.item_type != item.item_type || stack.quantity == 0 {
+                continue;
+            }
+            if stack.quantity > amount_left_to_take {
+                stack.quantity -= amount_left_to_take;
+                amount_left_to_take = 0;
+            } else if stack.quantity < amount_left_to_take {
+                amount_left_to_take -= stack.quantity;
+                stack.quantity = 0;
+            } else {
+                amount_left_to_take -= stack.quantity;
+                stack.quantity = 0;
+            }
+        }
+
+        self.items.retain(|item| item.quantity > 0);
     }
 }
 

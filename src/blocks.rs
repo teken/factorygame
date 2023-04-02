@@ -37,13 +37,13 @@ pub struct Block {
     pub direction: player::Direction,
 }
 
-#[derive(Component, Default, Reflect)]
+#[derive(Component, Default, Reflect, Debug)]
 pub struct Input {
     pub accepts: Option<ItemStack>,
     pub inventory: Inventory,
 }
 
-#[derive(Component, Default, Reflect)]
+#[derive(Component, Default, Reflect, Debug)]
 pub struct Output {
     pub inventory: Inventory,
 }
@@ -57,8 +57,7 @@ pub struct LogOutput;
 #[derive(Component, Default, Reflect)]
 pub struct Process {
     pub reaction: Option<Reaction>,
-    // pub time: f32,
-    // pub timer: Timer,
+    pub timer: Timer,
 }
 
 #[derive(Debug, Clone, Reflect, Copy, Default, PartialEq, Eq, Hash)]
@@ -150,6 +149,10 @@ impl Spawn for BlockType {
                 Output::default(),
                 Process {
                     reaction: Some(PROCESS_IRON_TO_GOLD.clone()),
+                    timer: Timer::from_seconds(
+                        PROCESS_IRON_TO_GOLD.time as f32 / 1000.,
+                        TimerMode::Repeating,
+                    ),
                 },
                 PickableBundle::default(),
             )),
@@ -223,7 +226,7 @@ impl Spawn for BlockType {
                     ]
                     .into(),
                 },
-                LogInput::default(),
+                // LogInput::default(),
                 PickableBundle::default(),
             )),
             BlockType::Grabber => commands.spawn((
@@ -251,10 +254,10 @@ impl Spawn for BlockType {
 
 fn furnace_system(
     mut query: Query<(&mut Input, &mut Output, &mut Process), With<Furnace>>,
-    // time: Res<Time>,
+    time: Res<Time>,
 ) {
-    for (mut input, mut output, process) in query.iter_mut() {
-        if !process.reaction.is_some() {
+    for (mut input, mut output, mut process) in query.iter_mut() {
+        if process.reaction.is_none() {
             continue;
         };
 
@@ -267,16 +270,15 @@ fn furnace_system(
             continue;
         }
 
-        // process.timer.tick(time.delta());
-        // if !process.timer.finished() {
-        //     continue;
-        // }
-
-        process
-            .reaction
-            .as_ref()
-            .unwrap()
-            .run(&mut input.inventory, &mut output.inventory);
+        process.timer.tick(time.delta());
+        if process.timer.just_finished() {
+            process
+                .reaction
+                .as_ref()
+                .unwrap()
+                .run(&mut input.inventory, &mut output.inventory);
+            process.timer.reset();
+        }
     }
 }
 
