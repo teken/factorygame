@@ -6,7 +6,7 @@ use std::fmt::Display;
 
 use crate::{
     grid::GridCellHoveredEvent,
-    materials::{self, Inventory, ItemStack, Reaction},
+    materials::{Inventory, ItemStack, Reaction},
     player::{self, Modes, Player, SpawnerOptions},
 };
 
@@ -122,6 +122,12 @@ impl Spawn for BlockType {
         spawner_options: &SpawnerOptions,
         click_position: Vec3,
     ) {
+        let default_block = Block {
+            min: click_position.floor(),
+            max: click_position.ceil(),
+            block_type: BlockType::Debug,
+            direction: spawner_options.block_rotation.clone(),
+        };
         match self {
             BlockType::Debug => commands.spawn((
                 SceneBundle {
@@ -134,10 +140,8 @@ impl Spawn for BlockType {
                 },
                 Name::new("Debug Block"),
                 Block {
-                    min: click_position.floor(),
-                    max: click_position.ceil(),
                     block_type: BlockType::Debug,
-                    direction: spawner_options.block_rotation.clone(),
+                    ..default_block
                 },
                 PickableBundle::default(),
             )),
@@ -154,10 +158,8 @@ impl Spawn for BlockType {
                 Name::new("Furnace"),
                 Furnace::default(),
                 Block {
-                    min: click_position.floor(),
-                    max: click_position.ceil(),
                     block_type: BlockType::Furnace,
-                    direction: spawner_options.block_rotation.clone(),
+                    ..default_block
                 },
                 Input::default(),
                 Output::default(),
@@ -177,10 +179,8 @@ impl Spawn for BlockType {
                 Name::new("Conveyor"),
                 Conveyor::default(),
                 Block {
-                    min: click_position.floor(),
-                    max: click_position.ceil(),
                     block_type: BlockType::Conveyor,
-                    direction: spawner_options.block_rotation.clone(),
+                    ..default_block
                 },
                 Input::default(),
                 Output::default(),
@@ -199,10 +199,9 @@ impl Spawn for BlockType {
                 Name::new("Splitter"),
                 Splitter::default(),
                 Block {
-                    min: click_position.floor(),
                     max: click_position.ceil() + vec3(0., 0., 1.),
                     block_type: BlockType::Splitter,
-                    direction: spawner_options.block_rotation.clone(),
+                    ..default_block
                 },
                 Input::default(),
                 Output::default(),
@@ -221,10 +220,8 @@ impl Spawn for BlockType {
                 Name::new("Storage"),
                 Storage::default(),
                 Block {
-                    min: click_position.floor(),
-                    max: click_position.ceil(),
                     block_type: BlockType::Storage,
-                    direction: spawner_options.block_rotation.clone(),
+                    ..default_block
                 },
                 // Inventory::default(),
                 Input::default(),
@@ -243,10 +240,8 @@ impl Spawn for BlockType {
                 Name::new("Grabber Block"),
                 Grabber::default(),
                 Block {
-                    min: click_position.floor(),
-                    max: click_position.ceil(),
                     block_type: BlockType::Grabber,
-                    direction: spawner_options.block_rotation.clone(),
+                    ..default_block
                 },
                 PickableBundle::default(),
             )),
@@ -349,7 +344,6 @@ fn grabber_system(
     grabber_query: Query<&Block, With<Grabber>>,
     mut input_query: Query<(&Block, &mut Input)>,
     mut output_query: Query<(&Block, &mut Output)>,
-    mut shapes: ResMut<DebugShapes>,
 ) {
     for block in grabber_query.iter() {
         let input;
@@ -405,11 +399,11 @@ fn grabber_system(
             }
         }
 
-        let Some((in_block, mut input)) = input else {
+        let Some((_, mut input)) = input else {
             return;
         };
 
-        let Some((out_block, mut output)) = output else {
+        let Some((_, mut output)) = output else {
             return;
         };
 
@@ -532,8 +526,8 @@ fn display_dep_chains(
     input_query: Query<(&GlobalTransform, &Aabb, &Block, Entity), With<Input>>,
     output_query: Query<(&GlobalTransform, &Aabb, &Block, Entity), With<Output>>,
 ) {
-    for (trans, aabb, block, entity) in input_query.iter() {
-        let output = output_query.iter().find(|(t, a, b, e)| {
+    for (trans, aabb, block, _) in input_query.iter() {
+        let output = output_query.iter().find(|(_, _, b, _)| {
             // entity != *e
             match block.direction {
                 player::Direction::North => {
@@ -557,7 +551,7 @@ fn display_dep_chains(
             }
         });
 
-        let Some((o_t,o_a,o_block, o_entity)) = output else {
+        let Some((o_t,o_a,_, _)) = output else {
             continue;
         };
 

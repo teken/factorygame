@@ -322,61 +322,57 @@ fn dev_ui(
                     "Block",
                     &mut spawn_options.block_selection,
                 );
-                block_selected_query.iter().for_each(|(block, ent)| {
-                    ui.group(|ui| {
-                        ui.heading("Selected Block");
-                        ui.separator();
-                        ui.label(format!("Block Type: {:?}", block.block_type));
-                        ui.label(format!("Block Rotation: {:?}", block.direction));
+            });
+            block_selected_query.iter().for_each(|(block, ent)| {
+                ui.group(|ui| {
+                    ui.heading("Selected Block");
+                    ui.separator();
+                    ui.label(format!("Block Type: {:?}", block.block_type));
+                    ui.label(format!("Block Rotation: {:?}", block.direction));
 
-                        if let Ok(mut process) = process_selected_query.get_mut(ent) {
-                            ui.heading("Process");
-                            match block.block_type {
-                                BlockType::Furnace => {
-                                    egui::ComboBox::from_id_source("furance_process")
-                                        .selected_text(format!(
-                                            "{}",
-                                            match &process.reaction {
-                                                Some(reaction) => format!("{}", reaction),
-                                                None => "None".to_string(),
-                                            }
-                                        ))
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(
-                                                &mut process.reaction,
-                                                None,
-                                                "None",
-                                            );
-                                            ui.selectable_value(
-                                                &mut process.reaction,
-                                                Some(PROCESS_IRON_TO_GOLD.clone()),
-                                                format!("{}", PROCESS_IRON_TO_GOLD.clone()),
-                                            );
-                                        });
-                                }
-                                _ => {}
+                    if let Ok(mut process) = process_selected_query.get_mut(ent) {
+                        ui.heading("Process");
+                        match block.block_type {
+                            BlockType::Furnace => {
+                                egui::ComboBox::from_id_source("furance_process")
+                                    .selected_text(format!(
+                                        "{}",
+                                        match &process.reaction {
+                                            Some(reaction) => format!("{}", reaction),
+                                            None => "None".to_string(),
+                                        }
+                                    ))
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut process.reaction, None, "None");
+                                        ui.selectable_value(
+                                            &mut process.reaction,
+                                            Some(PROCESS_IRON_TO_GOLD.clone()),
+                                            format!("{}", PROCESS_IRON_TO_GOLD.clone()),
+                                        );
+                                    });
                             }
+                            _ => {}
                         }
+                    }
 
-                        if let Ok(mut input) = input_selected_query.get_mut(ent) {
-                            ui.heading("Input");
-                            inventory_table(
-                                ui,
-                                &mut ui_state,
-                                "input".to_string(),
-                                &mut input.inventory,
-                            );
-                        }
-                        if let Ok(mut output) = output_selected_query.get_mut(ent) {
-                            ui.heading("Output");
-                            inventory_table(
-                                ui,
-                                &mut ui_state,
-                                "output".to_string(),
-                                &mut output.inventory,
-                            );
-                        }
-                    });
+                    if let Ok(mut input) = input_selected_query.get_mut(ent) {
+                        ui.heading("Input");
+                        inventory_table(
+                            ui,
+                            &mut ui_state,
+                            "input".to_string(),
+                            &mut input.inventory,
+                        );
+                    }
+                    if let Ok(mut output) = output_selected_query.get_mut(ent) {
+                        ui.heading("Output");
+                        inventory_table(
+                            ui,
+                            &mut ui_state,
+                            "output".to_string(),
+                            &mut output.inventory,
+                        );
+                    }
                 });
             });
         });
