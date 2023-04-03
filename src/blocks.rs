@@ -1,12 +1,13 @@
 use bevy::{math::vec3, prelude::*, render::primitives::Aabb};
 use bevy_mod_picking::PickableBundle;
 use bevy_prototype_debug_lines::DebugShapes;
+use enum_iterator::Sequence;
+use std::fmt::Display;
 
 use crate::{
     grid::GridCellHoveredEvent,
     materials::{self, Inventory, ItemStack, Reaction},
     player::{self, Modes, Player, SpawnerOptions},
-    reactions::PROCESS_IRON_TO_GOLD,
 };
 
 pub struct BlockPlugin;
@@ -67,7 +68,7 @@ impl Process {
     }
 }
 
-#[derive(Debug, Clone, Reflect, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Reflect, Copy, Default, PartialEq, Eq, Hash, Sequence)]
 pub enum BlockType {
     #[default]
     Debug,
@@ -76,6 +77,12 @@ pub enum BlockType {
     Splitter,
     Storage,
     Grabber,
+}
+
+impl Display for BlockType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Component, Default)]
@@ -221,13 +228,7 @@ impl Spawn for BlockType {
                 },
                 // Inventory::default(),
                 Input::default(),
-                Output {
-                    inventory: vec![
-                        materials::Element::Iron.to_item_stack(materials::State::Solid, 10)
-                    ]
-                    .into(),
-                },
-                // LogInput::default(),
+                Output::default(),
                 PickableBundle::default(),
             )),
             BlockType::Grabber => commands.spawn((
@@ -560,7 +561,7 @@ fn display_dep_chains(
             continue;
         };
 
-        println!("{:?} -> {:?}", entity, o_entity);
+        // println!("{:?} -> {:?}", entity, o_entity);
 
         shapes
             .line()

@@ -1,6 +1,7 @@
-use std::{fmt::Display, fmt::Formatter, time::Duration};
+use std::{default, fmt::Display, fmt::Formatter, time::Duration};
 
 use bevy::{prelude::*, utils::hashbrown::HashMap};
+use enum_iterator::Sequence;
 use lazy_static::lazy_static;
 
 pub struct MaterialsPlugin;
@@ -106,7 +107,7 @@ impl ItemStackType {
 
 #[derive(Reflect, Default, Debug, Clone)]
 pub struct Inventory {
-    items: Vec<ItemStack>,
+    pub items: Vec<ItemStack>,
 }
 
 impl From<Vec<ItemStack>> for Inventory {
@@ -269,8 +270,9 @@ lazy_static! {
     pub static ref DEFAULT_STATIC_LIMIT: u32 = 64;
 }
 
-#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash, FromReflect)]
+#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash, FromReflect, Sequence, Default)]
 pub enum Energy {
+    #[default]
     Mechanical,
     Electric,
     Magnetic,
@@ -295,6 +297,12 @@ impl Energy {
     }
 }
 
+impl Display for Energy {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 // pub enum IonizingRadiation {
 //     Ultraviolet,
 //     Xray,
@@ -313,12 +321,19 @@ impl Energy {
 //     Blackbody,
 // }
 
-#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash, FromReflect)]
+#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash, FromReflect, Sequence, Default)]
 pub enum State {
+    #[default]
     Solid,
     Liquid,
     Gas,
     Plasma,
+}
+
+impl Display for State {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl State {
@@ -330,8 +345,9 @@ impl State {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash, FromReflect)]
+#[derive(Clone, Debug, PartialEq, Reflect, Eq, Hash, FromReflect, Sequence, Default)]
 pub enum Element {
+    #[default]
     Hydrogen,
     Helium,
     Lithium,
@@ -458,5 +474,11 @@ impl Element {
             item_type: ItemStackType::Element(self, state),
             quantity,
         }
+    }
+}
+
+impl Display for Element {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }

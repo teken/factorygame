@@ -1,4 +1,9 @@
-use std::f32::consts::PI;
+use std::{
+    f32::consts::PI,
+    fmt::{Debug, Display},
+    iter,
+    sync::Mutex,
+};
 
 use bevy::{
     input::mouse::{MouseMotion, MouseWheel},
@@ -7,12 +12,19 @@ use bevy::{
 };
 use bevy_inspector_egui::bevy_egui::{egui, EguiContexts};
 use bevy_mod_picking::PickingCameraBundle;
+use enum_iterator::{all, Sequence};
+use rand::{Rng, SeedableRng};
+use rand_pcg::{Lcg64Xsh32, Pcg32};
 
 use crate::{
+    blocks,
     blocks::{Block, BlockClicked, BlockType, Process},
     grid::GridSelectMode,
+    materials::{self, Element, Energy, Inventory, ItemStack},
     reactions::PROCESS_IRON_TO_GOLD,
 };
+
+use lazy_static::lazy_static;
 
 pub struct PlayerPlugin;
 
@@ -53,7 +65,7 @@ pub struct SpawnerOptions {
     pub player_mode: Modes,
 }
 
-#[derive(Default, Reflect, PartialEq, Clone, Debug)]
+#[derive(Default, Reflect, PartialEq, Clone, Debug, Sequence)]
 pub enum Direction {
     #[default]
     North,
@@ -62,6 +74,12 @@ pub enum Direction {
     West,
     Up,
     Down,
+}
+
+impl Display for Direction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl Direction {
@@ -265,10 +283,22 @@ fn player_hotkeys(keys: Res<Input<KeyCode>>, mut query: Query<&mut SpawnerOption
     }
 }
 
+#[derive(Default)]
+struct UiState {
+    selected_quantity: u32,
+    selected_element: Element,
+    selected_state: materials::State,
+    selected_energy: Energy,
+}
+
 fn dev_ui(
     mut egui_ctx: EguiContexts,
     mut player_query: Query<&mut SpawnerOptions, With<Player>>,
-    mut block_selected_query: Query<(&Block, Entity, &mut Process), With<BlockClicked>>,
+    block_selected_query: Query<(&Block, Entity), With<BlockClicked>>,
+    mut process_selected_query: Query<&mut Process, With<BlockClicked>>,
+    mut input_selected_query: Query<&mut blocks::Input, With<BlockClicked>>,
+    mut output_selected_query: Query<&mut blocks::Output, With<BlockClicked>>,
+    mut ui_state: Local<UiState>,
 ) {
     let Ok(mut spawn_options) = player_query.get_single_mut() else { return; };
 
@@ -278,120 +308,159 @@ fn dev_ui(
             ui.group(|ui| {
                 ui.heading("Player Settings");
                 ui.separator();
-                ui.label("Mode");
-                egui::ComboBox::from_id_source("mode")
-                    .selected_text(format!("{:?}", spawn_options.player_mode))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut spawn_options.player_mode,
-                            Modes::Overview,
-                            "Overview",
-                        );
-                        ui.selectable_value(&mut spawn_options.player_mode, Modes::Build, "Build");
-                        ui.selectable_value(
-                            &mut spawn_options.player_mode,
-                            Modes::Destroy,
-                            "Destroy",
-                        );
-                    });
-                ui.label("Rotation");
-                egui::ComboBox::from_id_source("rotation")
-                    .selected_text(format!("{:?}", spawn_options.block_rotation))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut spawn_options.block_rotation,
-                            Direction::North,
-                            "North",
-                        );
-                        ui.selectable_value(
-                            &mut spawn_options.block_rotation,
-                            Direction::East,
-                            "East",
-                        );
-                        ui.selectable_value(
-                            &mut spawn_options.block_rotation,
-                            Direction::South,
-                            "South",
-                        );
-                        ui.selectable_value(
-                            &mut spawn_options.block_rotation,
-                            Direction::West,
-                            "West",
-                        );
-                        ui.selectable_value(&mut spawn_options.block_rotation, Direction::Up, "Up");
-                        ui.selectable_value(
-                            &mut spawn_options.block_rotation,
-                            Direction::Down,
-                            "Down",
-                        );
-                    });
-                ui.label("Block");
-                egui::ComboBox::from_id_source("block")
-                    .selected_text(format!("{:?}", spawn_options.block_selection))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut spawn_options.block_selection,
-                            BlockType::Debug,
-                            "Debug",
-                        );
-                        ui.selectable_value(
-                            &mut spawn_options.block_selection,
-                            BlockType::Furnace,
-                            "Furnace",
-                        );
-                        ui.selectable_value(
-                            &mut spawn_options.block_selection,
-                            BlockType::Conveyor,
-                            "Conveyor",
-                        );
-                        ui.selectable_value(
-                            &mut spawn_options.block_selection,
-                            BlockType::Splitter,
-                            "Splitter",
-                        );
-                        ui.selectable_value(
-                            &mut spawn_options.block_selection,
-                            BlockType::Storage,
-                            "Storage",
-                        );
-                        ui.selectable_value(
-                            &mut spawn_options.block_selection,
-                            BlockType::Grabber,
-                            "Grabber",
-                        );
-                    });
-            });
-            block_selected_query
-                .iter_mut()
-                .for_each(|(block, _, mut process)| {
+                ui.label(format!("Mode: {:?}", spawn_options.player_mode));
+
+                enum_dropdown::<Direction>(
+                    ui,
+                    "rot".to_string(),
+                    "Rotation",
+                    &mut spawn_options.block_rotation,
+                );
+                enum_dropdown::<BlockType>(
+                    ui,
+                    "bt".to_string(),
+                    "Block",
+                    &mut spawn_options.block_selection,
+                );
+                block_selected_query.iter().for_each(|(block, ent)| {
                     ui.group(|ui| {
                         ui.heading("Selected Block");
                         ui.separator();
                         ui.label(format!("Block Type: {:?}", block.block_type));
                         ui.label(format!("Block Rotation: {:?}", block.direction));
 
-                        match block.block_type {
-                            BlockType::Furnace => {
-                                egui::ComboBox::from_id_source("furance_process")
-                                    .selected_text(format!(
-                                        "{}",
-                                        match &process.reaction {
-                                            Some(reaction) => format!("{}", reaction),
-                                            None => "None".to_string(),
-                                        }
-                                    ))
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut process.reaction, None, "None");
-                                        ui.selectable_value(
-                                            &mut process.reaction,
-                                            Some(PROCESS_IRON_TO_GOLD.clone()),
-                                            "Solid Iron -> Solid Gold",
-                                        );
-                                    });
+                        if let Ok(mut process) = process_selected_query.get_mut(ent) {
+                            ui.heading("Process");
+                            match block.block_type {
+                                BlockType::Furnace => {
+                                    egui::ComboBox::from_id_source("furance_process")
+                                        .selected_text(format!(
+                                            "{}",
+                                            match &process.reaction {
+                                                Some(reaction) => format!("{}", reaction),
+                                                None => "None".to_string(),
+                                            }
+                                        ))
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(
+                                                &mut process.reaction,
+                                                None,
+                                                "None",
+                                            );
+                                            ui.selectable_value(
+                                                &mut process.reaction,
+                                                Some(PROCESS_IRON_TO_GOLD.clone()),
+                                                format!("{}", PROCESS_IRON_TO_GOLD.clone()),
+                                            );
+                                        });
+                                }
+                                _ => {}
                             }
-                            _ => {}
+                        }
+
+                        if let Ok(mut input) = input_selected_query.get_mut(ent) {
+                            ui.heading("Input");
+                            inventory_table(
+                                ui,
+                                &mut ui_state,
+                                "input".to_string(),
+                                &mut input.inventory,
+                            );
+                        }
+                        if let Ok(mut output) = output_selected_query.get_mut(ent) {
+                            ui.heading("Output");
+                            inventory_table(
+                                ui,
+                                &mut ui_state,
+                                "output".to_string(),
+                                &mut output.inventory,
+                            );
                         }
                     });
                 });
+            });
+        });
+}
+
+#[inline]
+fn inventory_table(
+    ui: &mut egui::Ui,
+    ui_state: &mut Local<UiState>,
+    id: String,
+    inventory: &mut Inventory,
+) {
+    ui.horizontal(|ui| {
+        ui.label("Item");
+        ui.separator();
+        ui.label("Amount");
+    });
+    ui.separator();
+    for stack in inventory.items.iter() {
+        ui.horizontal(|ui| {
+            ui.label(format!("{}", stack.item_type));
+            ui.separator();
+            ui.label(format!("{}", stack.quantity));
+        });
+    }
+    ui.separator();
+    ui.add(
+        egui::DragValue::new(&mut ui_state.selected_quantity)
+            .speed(0.1)
+            .clamp_range(1..=64),
+    );
+    ui.horizontal(|ui| {
+        enum_dropdown::<Element>(
+            ui,
+            format!("{}-el", id),
+            "Element",
+            &mut ui_state.selected_element,
+        );
+        enum_dropdown::<materials::State>(
+            ui,
+            format!("{}-st", id),
+            "State",
+            &mut ui_state.selected_state,
+        );
+        if ui.button("Add").clicked() {
+            inventory.push(
+                ui_state
+                    .selected_element
+                    .clone()
+                    .to_item_stack(ui_state.selected_state.clone(), ui_state.selected_quantity),
+            );
+        }
+    });
+    ui.horizontal(|ui| {
+        enum_dropdown::<Energy>(
+            ui,
+            format!("{}-en", id),
+            "Energy",
+            &mut ui_state.selected_energy,
+        );
+        if ui.button("Add").clicked() {
+            inventory.push(
+                ui_state
+                    .selected_energy
+                    .clone()
+                    .to_item_stack(ui_state.selected_quantity),
+            );
+        }
+    });
+}
+
+#[inline]
+fn enum_dropdown<T: Sequence + PartialEq + Display + Clone + Debug>(
+    ui: &mut egui::Ui,
+    id: String,
+    label: &str,
+    value: &mut T,
+) {
+    ui.label(label);
+    egui::ComboBox::from_id_source(id)
+        .selected_text(format!("{}", value))
+        .show_ui(ui, |ui| {
+            for option in all::<T>().collect::<Vec<T>>() {
+                ui.selectable_value(value, option.clone(), format!("{}", option));
+            }
         });
 }

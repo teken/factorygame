@@ -15,6 +15,9 @@ bevy_obj = "0.10.0"
 bevy_mod_raycast = "0.8.0"
 lazy_static = "1.4.0"
 bevy_mod_picking = "0.12.0"
+enum-iterator = "1.4.0"
+rand = "0.8.5"
+rand_pcg = "0.3.1"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
