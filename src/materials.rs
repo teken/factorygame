@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fmt::Display, fmt::Formatter, time::Duration};
 
 use bevy::{prelude::*, utils::hashbrown::HashMap};
 use lazy_static::lazy_static;
@@ -22,6 +22,19 @@ pub struct Reaction {
     pub input: Vec<ItemStack>,
     pub output: Vec<ItemStack>,
     pub duration: Duration,
+}
+
+impl Display for Reaction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for item in &self.input {
+            write!(f, "{}", item)?;
+        }
+        write!(f, "-> ")?;
+        for item in &self.output {
+            write!(f, "{}", item)?;
+        }
+        write!(f, "({:?})", self.duration)
+    }
 }
 
 impl Reaction {
@@ -57,10 +70,22 @@ pub struct ItemStack {
     pub quantity: u32,
 }
 
+impl Display for ItemStack {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}({}),", self.item_type, self.quantity)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Reflect, FromReflect)]
 pub enum ItemStackType {
     Element(Element, State),
     Energy(Energy),
+}
+
+impl Display for ItemStackType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl ItemStackType {

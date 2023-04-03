@@ -373,7 +373,13 @@ fn dev_ui(
                         match block.block_type {
                             BlockType::Furnace => {
                                 egui::ComboBox::from_id_source("furance_process")
-                                    .selected_text(format!("{:?}", process.reaction))
+                                    .selected_text(format!(
+                                        "{}",
+                                        match &process.reaction {
+                                            Some(reaction) => format!("{}", reaction),
+                                            None => "None".to_string(),
+                                        }
+                                    ))
                                     .show_ui(ui, |ui| {
                                         ui.selectable_value(&mut process.reaction, None, "None");
                                         ui.selectable_value(
