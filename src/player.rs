@@ -100,9 +100,9 @@ impl Direction {
     pub fn to_quat(&self) -> Quat {
         match self {
             Direction::North => Quat::from_rotation_y(0.0),
-            Direction::East => Quat::from_rotation_y(PI * 0.5),
+            Direction::East => Quat::from_rotation_y(PI * 1.5),
             Direction::South => Quat::from_rotation_y(PI),
-            Direction::West => Quat::from_rotation_y(PI * 1.5),
+            Direction::West => Quat::from_rotation_y(PI * 0.5),
             Direction::Up => Quat::from_rotation_z(PI * 0.5),
             Direction::Down => Quat::from_rotation_z(PI * 1.5),
         }

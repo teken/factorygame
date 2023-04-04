@@ -18,7 +18,7 @@ pub struct BlockPlugin;
 
 impl Plugin for BlockPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(display_aabbs);
+        // app.add_system(display_aabbs);
         app.add_system(furnace_system);
         app.add_system(internal_conveyor_system);
         app.add_system(external_conveyor_system);
@@ -35,17 +35,17 @@ impl Plugin for BlockPlugin {
     }
 }
 
-fn display_aabbs(
-    query: Query<(&Aabb, &GlobalTransform), With<Block>>,
-    mut debug_lines: ResMut<DebugShapes>,
-) {
-    for (aabb, transform) in query.iter() {
-        debug_lines.cuboid().min_max(
-            transform.transform_point(aabb.min().into()).floor(),
-            transform.transform_point(aabb.max().into()).ceil(),
-        );
-    }
-}
+// fn display_aabbs(
+//     query: Query<(&Aabb, &GlobalTransform), With<Block>>,
+//     mut debug_lines: ResMut<DebugShapes>,
+// ) {
+//     for (aabb, transform) in query.iter() {
+//         debug_lines.cuboid().min_max(
+//             transform.transform_point(aabb.min().into()).floor(),
+//             transform.transform_point(aabb.max().into()).ceil(),
+//         );
+//     }
+// }
 
 #[derive(Component, Reflect)]
 pub struct Block {
@@ -57,6 +57,7 @@ pub fn is_next_block_in_direction(
     a: (&Aabb, &GlobalTransform),
     b: (&Aabb, &GlobalTransform),
     direction: player::Direction,
+    // mut debug_lines: Option<&mut DebugShapes>,
 ) -> bool {
     let mut target_vec = a.1.transform_point(a.0.center.into());
     match direction {
@@ -79,6 +80,12 @@ pub fn is_next_block_in_direction(
             target_vec.y = (target_vec.y - a.0.half_extents.y).floor() - 0.5;
         }
     }
+
+    // if let Some(debug_lines) = debug_lines.as_mut() {
+    //     debug_lines
+    //         .cuboid()
+    //         .min_max(target_vec.floor(), target_vec.ceil());
+    // }
 
     let block_aabb = (
         b.1.transform_point(b.0.min().into()).floor(),
@@ -381,7 +388,7 @@ fn external_conveyor_system(
         });
 
         let Some((_,_,_, mut output)) = output else {
-            return;
+            continue;
         };
 
         if let Some(accepts) = input.accepts.clone() {
@@ -398,6 +405,7 @@ fn grabber_system(
     grabber_query: Query<(&Block, &Aabb, &GlobalTransform), With<Grabber>>,
     mut input_query: Query<(&Aabb, &GlobalTransform, &mut Input)>,
     mut output_query: Query<(&Aabb, &GlobalTransform, &mut Output)>,
+    // mut debug_lines: ResMut<DebugShapes>,
 ) {
     for (block, aabb, trans) in grabber_query.iter() {
         let input = input_query.iter_mut().find(|(ab, tr, _)| {
@@ -408,14 +416,12 @@ fn grabber_system(
         });
 
         let Some((_, _, mut input)) = input else {
-            return;
+            continue;
         };
 
         let Some((_, _, mut output)) = output else {
-            return;
+            continue;
         };
-
-        println!("Grabber: {:?} -> {:?}", output, input);
 
         if let Some(accepts) = input.accepts.clone() {
             if !output.inventory.is_empty() && output.inventory.contains(&accepts) {
@@ -540,23 +546,23 @@ fn display_dep_chains(
     output_query: Query<(&GlobalTransform, &Aabb, &Block, Entity), With<Output>>,
 ) {
     return;
-    for (trans, aabb, block, _) in input_query.iter() {
-        let output = output_query.iter().find(|(tr, ab, _, _)| {
-            is_next_block_in_direction((aabb, trans), (ab, tr), block.direction.reverse())
-        });
+    // for (trans, aabb, block, _) in input_query.iter() {
+    //     let output = output_query.iter().find(|(tr, ab, _, _)| {
+    //         is_next_block_in_direction((aabb, trans), (ab, tr), block.direction.reverse())
+    //     });
 
-        let Some((o_t,o_a,_, _)) = output else {
-            continue;
-        };
+    //     let Some((o_t,o_a,_, _)) = output else {
+    //         continue;
+    //     };
 
-        // println!("{:?} -> {:?}", entity, o_entity);
+    //     // println!("{:?} -> {:?}", entity, o_entity);
 
-        shapes
-            .line()
-            .start_end(
-                trans.transform_point(aabb.center.into()),
-                o_t.transform_point(o_a.center.into()),
-            )
-            .gradient(Color::RED, Color::GREEN);
-    }
+    //     shapes
+    //         .line()
+    //         .start_end(
+    //             trans.transform_point(aabb.center.into()),
+    //             o_t.transform_point(o_a.center.into()),
+    //         )
+    //         .gradient(Color::RED, Color::GREEN);
+    // }
 }
