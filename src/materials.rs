@@ -18,7 +18,7 @@ impl Plugin for MaterialsPlugin {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Reflect, FromReflect)]
+#[derive(Clone, Debug, PartialEq, Reflect, FromReflect, Default)]
 pub struct Reaction {
     pub input: Vec<ItemStack>,
     pub output: Vec<ItemStack>,

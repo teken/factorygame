@@ -20,7 +20,7 @@ use crate::{
     blocks,
     blocks::{Block, BlockClicked, BlockType, Process},
     grid::GridSelectMode,
-    materials::{self, Element, Energy, Inventory, ItemStack},
+    materials::{self, Element, Energy, Inventory, ItemStack, Reaction},
     reactions::PROCESS_IRON_TO_GOLD,
 };
 
@@ -289,6 +289,7 @@ struct UiState {
     selected_element: Element,
     selected_state: materials::State,
     selected_energy: Energy,
+    selected_reaction: Option<Reaction>,
 }
 
 fn dev_ui(
@@ -308,18 +309,18 @@ fn dev_ui(
             ui.group(|ui| {
                 ui.heading("Player Settings");
                 ui.separator();
-                ui.label(format!("Mode: {:?}", spawn_options.player_mode));
+                ui.label(format!("Mode (Q): {:?}", spawn_options.player_mode));
 
                 enum_dropdown::<Direction>(
                     ui,
                     "rot".to_string(),
-                    "Rotation",
+                    "Rotation (R)",
                     &mut spawn_options.block_rotation,
                 );
                 enum_dropdown::<BlockType>(
                     ui,
                     "bt".to_string(),
-                    "Block",
+                    "Block (Num Keys)",
                     &mut spawn_options.block_selection,
                 );
             });
@@ -332,26 +333,41 @@ fn dev_ui(
 
                     if let Ok(mut process) = process_selected_query.get_mut(ent) {
                         ui.heading("Process");
+                        if process.reaction.is_some() {
+                            ui.add(
+                                egui::ProgressBar::new(process.timer.percent())
+                                    .animate(process.timer.percent() > 0.),
+                            );
+                        }
                         match block.block_type {
                             BlockType::Furnace => {
                                 egui::ComboBox::from_id_source("furance_process")
                                     .selected_text(format!(
                                         "{}",
-                                        match &process.reaction {
+                                        match &ui_state.selected_reaction {
                                             Some(reaction) => format!("{}", reaction),
                                             None => "None".to_string(),
                                         }
                                     ))
                                     .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut process.reaction, None, "None");
                                         ui.selectable_value(
-                                            &mut process.reaction,
+                                            &mut ui_state.selected_reaction,
+                                            None,
+                                            "None",
+                                        );
+                                        ui.selectable_value(
+                                            &mut ui_state.selected_reaction,
                                             Some(PROCESS_IRON_TO_GOLD.clone()),
                                             format!("{}", PROCESS_IRON_TO_GOLD.clone()),
                                         );
                                     });
                             }
                             _ => {}
+                        }
+                        if ui_state.selected_reaction.is_some()
+                            && process.reaction != ui_state.selected_reaction
+                        {
+                            process.set_reaction(ui_state.selected_reaction.as_ref().unwrap());
                         }
                     }
 
@@ -398,49 +414,50 @@ fn inventory_table(
             ui.label(format!("{}", stack.quantity));
         });
     }
-    ui.separator();
-    ui.add(
-        egui::DragValue::new(&mut ui_state.selected_quantity)
-            .speed(0.1)
-            .clamp_range(1..=64),
-    );
-    ui.horizontal(|ui| {
-        enum_dropdown::<Element>(
-            ui,
-            format!("{}-el", id),
-            "Element",
-            &mut ui_state.selected_element,
+    ui.collapsing(format!("Add {} Item", id), |ui| {
+        ui.add(
+            egui::DragValue::new(&mut ui_state.selected_quantity)
+                .speed(0.1)
+                .clamp_range(1..=64),
         );
-        enum_dropdown::<materials::State>(
-            ui,
-            format!("{}-st", id),
-            "State",
-            &mut ui_state.selected_state,
-        );
-        if ui.button("Add").clicked() {
-            inventory.push(
-                ui_state
-                    .selected_element
-                    .clone()
-                    .to_item_stack(ui_state.selected_state.clone(), ui_state.selected_quantity),
+        ui.horizontal(|ui| {
+            enum_dropdown::<Element>(
+                ui,
+                format!("{}-el", id),
+                "Element",
+                &mut ui_state.selected_element,
             );
-        }
-    });
-    ui.horizontal(|ui| {
-        enum_dropdown::<Energy>(
-            ui,
-            format!("{}-en", id),
-            "Energy",
-            &mut ui_state.selected_energy,
-        );
-        if ui.button("Add").clicked() {
-            inventory.push(
-                ui_state
-                    .selected_energy
-                    .clone()
-                    .to_item_stack(ui_state.selected_quantity),
+            enum_dropdown::<materials::State>(
+                ui,
+                format!("{}-st", id),
+                "State",
+                &mut ui_state.selected_state,
             );
-        }
+            if ui.button("Add").clicked() {
+                inventory.push(
+                    ui_state
+                        .selected_element
+                        .clone()
+                        .to_item_stack(ui_state.selected_state.clone(), ui_state.selected_quantity),
+                );
+            }
+        });
+        ui.horizontal(|ui| {
+            enum_dropdown::<Energy>(
+                ui,
+                format!("{}-en", id),
+                "Energy",
+                &mut ui_state.selected_energy,
+            );
+            if ui.button("Add").clicked() {
+                inventory.push(
+                    ui_state
+                        .selected_energy
+                        .clone()
+                        .to_item_stack(ui_state.selected_quantity),
+                );
+            }
+        });
     });
 }
 
