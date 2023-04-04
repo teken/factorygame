@@ -1,4 +1,5 @@
 mod blocks;
+mod components;
 mod grid;
 mod inventory;
 mod materials;
@@ -15,6 +16,7 @@ use bevy_obj::ObjPlugin;
 use bevy_prototype_debug_lines::DebugLinesPlugin;
 use bevy_rapier3d::prelude::*;
 use blocks::BlockPlugin;
+use components::ComponentPlugin;
 use grid::GridPlugin;
 use player::PlayerPlugin;
 
@@ -27,6 +29,7 @@ fn main() {
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_plugin(DebugLinesPlugin::with_depth_test(true))
         .add_plugins(DefaultPickingPlugins)
+        .add_plugin(ComponentPlugin)
         .add_plugin(GridPlugin)
         .add_plugin(PlayerPlugin)
         .add_plugin(DebugCursorPickingPlugin)

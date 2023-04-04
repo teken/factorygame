@@ -1,14 +1,10 @@
-use bevy::{
-    input::mouse::MouseWheel,
-    math::{vec3, Vec3A},
-    prelude::*,
-    render::primitives::Aabb,
-};
+use bevy::{input::mouse::MouseWheel, math::vec3, prelude::*, render::primitives::Aabb};
 use bevy_mod_picking::{Highlighting, Hover, PickableBundle, PickingRaycastSet};
 use bevy_prototype_debug_lines::DebugLines;
 
 use crate::{
-    blocks::{Block, BlockClicked, Spawn},
+    blocks::Spawn,
+    components::{Block, BlockClicked},
     player::{Modes, Player, SpawnerOptions},
 };
 

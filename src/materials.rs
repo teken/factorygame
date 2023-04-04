@@ -1,4 +1,4 @@
-use std::{default, fmt::Display, fmt::Formatter, time::Duration};
+use std::{fmt::Display, fmt::Formatter, time::Duration};
 
 use bevy::{prelude::*, utils::hashbrown::HashMap};
 use enum_iterator::Sequence;

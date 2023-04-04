@@ -6,11 +6,13 @@ use bevy::{
 use bevy_mod_picking::PickableBundle;
 use bevy_prototype_debug_lines::DebugShapes;
 use enum_iterator::Sequence;
-use std::{fmt::Display, time::Duration};
+use std::fmt::Display;
 
 use crate::{
+    components::{
+        self, Block, BlockClicked, Conveyor, Furnace, Grabber, Output, Process, Splitter, Storage,
+    },
     grid::GridCellHoveredEvent,
-    materials::{Inventory, ItemStack, Reaction},
     player::{self, Modes, Player, SpawnerOptions},
 };
 
@@ -18,46 +20,19 @@ pub struct BlockPlugin;
 
 impl Plugin for BlockPlugin {
     fn build(&self, app: &mut App) {
-        // app.add_system(display_aabbs);
         app.add_system(furnace_system);
         app.add_system(internal_conveyor_system);
         app.add_system(external_conveyor_system);
-        // app.add_system(input_feed_system);
         app.add_system(grabber_system);
         app.add_system(display_build_ghost_system);
         app.add_system(highlight_selected_block);
-        app.add_system(logger_system);
-        app.add_system(display_dep_chains);
-        app.register_type::<Block>()
-            .register_type::<Input>()
-            .register_type::<Output>()
-            .register_type::<Process>();
     }
-}
-
-// fn display_aabbs(
-//     query: Query<(&Aabb, &GlobalTransform), With<Block>>,
-//     mut debug_lines: ResMut<DebugShapes>,
-// ) {
-//     for (aabb, transform) in query.iter() {
-//         debug_lines.cuboid().min_max(
-//             transform.transform_point(aabb.min().into()).floor(),
-//             transform.transform_point(aabb.max().into()).ceil(),
-//         );
-//     }
-// }
-
-#[derive(Component, Reflect)]
-pub struct Block {
-    pub block_type: BlockType,
-    pub direction: player::Direction,
 }
 
 pub fn is_next_block_in_direction(
     a: (&Aabb, &GlobalTransform),
     b: (&Aabb, &GlobalTransform),
     direction: player::Direction,
-    // mut debug_lines: Option<&mut DebugShapes>,
 ) -> bool {
     let mut target_vec = a.1.transform_point(a.0.center.into());
     match direction {
@@ -81,12 +56,6 @@ pub fn is_next_block_in_direction(
         }
     }
 
-    // if let Some(debug_lines) = debug_lines.as_mut() {
-    //     debug_lines
-    //         .cuboid()
-    //         .min_max(target_vec.floor(), target_vec.ceil());
-    // }
-
     let block_aabb = (
         b.1.transform_point(b.0.min().into()).floor(),
         b.1.transform_point(b.0.max().into()).ceil(),
@@ -98,44 +67,6 @@ pub fn is_next_block_in_direction(
         && target_vec.y <= block_aabb.1.y
         && target_vec.z >= block_aabb.0.z
         && target_vec.z <= block_aabb.1.z
-}
-
-#[derive(Component, Default, Reflect, Debug)]
-pub struct Input {
-    pub accepts: Option<ItemStack>,
-    pub inventory: Inventory,
-}
-
-#[derive(Component, Default, Reflect, Debug)]
-pub struct Output {
-    pub inventory: Inventory,
-}
-
-#[derive(Component, Default, Reflect)]
-pub struct LogInput;
-
-#[derive(Component, Default, Reflect)]
-pub struct LogOutput;
-
-#[derive(Component, Default, Reflect)]
-pub struct Process {
-    pub reaction: Option<Reaction>,
-    pub timer: Timer,
-}
-
-#[derive(Component, Default, Reflect)]
-pub struct Source {
-    pub source: Option<ItemStack>,
-    pub fequency: Duration,
-    pub timer: Timer,
-    pub inventory: Inventory,
-}
-
-impl Process {
-    pub fn set_reaction(&mut self, reaction: &Reaction) {
-        self.reaction = Some(reaction.clone());
-        self.timer = Timer::new(reaction.duration.clone(), TimerMode::Repeating);
-    }
 }
 
 #[derive(Debug, Clone, Reflect, Copy, Default, PartialEq, Eq, Hash, Sequence)]
@@ -154,31 +85,6 @@ impl Display for BlockType {
         write!(f, "{:?}", self)
     }
 }
-
-#[derive(Component, Default)]
-pub struct Furnace;
-
-#[derive(Component)]
-pub struct Conveyor {
-    pub timer: Timer,
-}
-
-impl Default for Conveyor {
-    fn default() -> Self {
-        Self {
-            timer: Timer::new(Duration::from_millis(1000), TimerMode::Repeating),
-        }
-    }
-}
-
-#[derive(Component, Default)]
-pub struct Splitter;
-
-#[derive(Component, Default)]
-pub struct Storage;
-
-#[derive(Component, Default)]
-pub struct Grabber;
 
 pub trait Spawn {
     fn spawn(
@@ -243,7 +149,7 @@ impl Spawn for BlockType {
                     block_type: BlockType::Furnace,
                     ..default_block
                 },
-                Input::default(),
+                components::Input::default(),
                 Output::default(),
                 Process::default(),
                 PickableBundle::default(),
@@ -264,7 +170,7 @@ impl Spawn for BlockType {
                     block_type: BlockType::Conveyor,
                     ..default_block
                 },
-                Input::default(),
+                components::Input::default(),
                 Output::default(),
                 PickableBundle::default(),
             )),
@@ -284,7 +190,7 @@ impl Spawn for BlockType {
                     block_type: BlockType::Splitter,
                     ..default_block
                 },
-                Input::default(),
+                components::Input::default(),
                 Output::default(),
                 PickableBundle::default(),
             )),
@@ -304,7 +210,7 @@ impl Spawn for BlockType {
                     block_type: BlockType::Storage,
                     ..default_block
                 },
-                Input::default(),
+                components::Input::default(),
                 Output::default(),
                 PickableBundle::default(),
             )),
@@ -334,7 +240,7 @@ impl Spawn for BlockType {
 }
 
 fn furnace_system(
-    mut query: Query<(&mut Input, &mut Output, &mut Process), With<Furnace>>,
+    mut query: Query<(&mut components::Input, &mut Output, &mut Process), With<Furnace>>,
     time: Res<Time>,
 ) {
     for (mut input, mut output, mut process) in query.iter_mut() {
@@ -364,7 +270,7 @@ fn furnace_system(
 }
 
 fn internal_conveyor_system(
-    mut query: Query<(&mut Input, &mut Output, &mut Conveyor)>,
+    mut query: Query<(&mut components::Input, &mut Output, &mut Conveyor)>,
     time: Res<Time>,
 ) {
     for (mut input, mut output, mut conveyor) in query.iter_mut() {
@@ -379,7 +285,10 @@ fn internal_conveyor_system(
 }
 
 fn external_conveyor_system(
-    mut input_query: Query<(&Aabb, &GlobalTransform, &Block, &mut Input), With<Conveyor>>,
+    mut input_query: Query<
+        (&Aabb, &GlobalTransform, &Block, &mut components::Input),
+        With<Conveyor>,
+    >,
     mut output_query: Query<(&Aabb, &GlobalTransform, &Block, &mut Output), With<Conveyor>>,
 ) {
     for (aabb, trans, block, mut input) in input_query.iter_mut() {
@@ -403,7 +312,7 @@ fn external_conveyor_system(
 
 fn grabber_system(
     grabber_query: Query<(&Block, &Aabb, &GlobalTransform), With<Grabber>>,
-    mut input_query: Query<(&Aabb, &GlobalTransform, &mut Input)>,
+    mut input_query: Query<(&Aabb, &GlobalTransform, &mut components::Input)>,
     mut output_query: Query<(&Aabb, &GlobalTransform, &mut Output)>,
     // mut debug_lines: ResMut<DebugShapes>,
 ) {
@@ -522,47 +431,4 @@ fn highlight_selected_block(
             .color(Color::rgba(0.0, 0.0, 1.0, 0.5))
             .duration(0.);
     }
-}
-
-#[derive(Component)]
-pub struct BlockClicked {}
-
-fn logger_system(
-    input_query: Query<(&Input, Entity), With<LogInput>>,
-    output_query: Query<(&Output, Entity), With<LogOutput>>,
-) {
-    for (input, ent) in input_query.iter().filter(|x| !x.0.inventory.is_empty()) {
-        println!("INPUT {:?}: {:#?}", ent, input.inventory);
-    }
-
-    for (output, ent) in output_query.iter().filter(|x| !x.0.inventory.is_empty()) {
-        println!("OUTPUT {:?}: {:#?}", ent, output.inventory);
-    }
-}
-
-fn display_dep_chains(
-    mut shapes: ResMut<DebugShapes>,
-    input_query: Query<(&GlobalTransform, &Aabb, &Block, Entity), With<Input>>,
-    output_query: Query<(&GlobalTransform, &Aabb, &Block, Entity), With<Output>>,
-) {
-    return;
-    // for (trans, aabb, block, _) in input_query.iter() {
-    //     let output = output_query.iter().find(|(tr, ab, _, _)| {
-    //         is_next_block_in_direction((aabb, trans), (ab, tr), block.direction.reverse())
-    //     });
-
-    //     let Some((o_t,o_a,_, _)) = output else {
-    //         continue;
-    //     };
-
-    //     // println!("{:?} -> {:?}", entity, o_entity);
-
-    //     shapes
-    //         .line()
-    //         .start_end(
-    //             trans.transform_point(aabb.center.into()),
-    //             o_t.transform_point(o_a.center.into()),
-    //         )
-    //         .gradient(Color::RED, Color::GREEN);
-    // }
 }

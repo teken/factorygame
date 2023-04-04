@@ -1,8 +1,6 @@
 use std::{
     f32::consts::PI,
     fmt::{Debug, Display},
-    iter,
-    sync::Mutex,
 };
 
 use bevy::{
@@ -13,18 +11,14 @@ use bevy::{
 use bevy_inspector_egui::bevy_egui::{egui, EguiContexts};
 use bevy_mod_picking::PickingCameraBundle;
 use enum_iterator::{all, Sequence};
-use rand::{Rng, SeedableRng};
-use rand_pcg::{Lcg64Xsh32, Pcg32};
 
 use crate::{
-    blocks,
-    blocks::{Block, BlockClicked, BlockType, Process},
+    blocks::BlockType,
+    components::{self, Block, BlockClicked, Process},
     grid::GridSelectMode,
-    materials::{self, Element, Energy, Inventory, ItemStack, Reaction},
+    materials::{self, Element, Energy, Inventory, Reaction},
     reactions::PROCESS_IRON_TO_GOLD,
 };
-
-use lazy_static::lazy_static;
 
 pub struct PlayerPlugin;
 
@@ -311,8 +305,8 @@ fn dev_ui(
     mut player_query: Query<&mut SpawnerOptions, With<Player>>,
     block_selected_query: Query<(&Block, Entity), With<BlockClicked>>,
     mut process_selected_query: Query<&mut Process, With<BlockClicked>>,
-    mut input_selected_query: Query<&mut blocks::Input, With<BlockClicked>>,
-    mut output_selected_query: Query<&mut blocks::Output, With<BlockClicked>>,
+    mut input_selected_query: Query<&mut components::Input, With<BlockClicked>>,
+    mut output_selected_query: Query<&mut components::Output, With<BlockClicked>>,
     mut ui_state: Local<UiState>,
 ) {
     let Ok(mut spawn_options) = player_query.get_single_mut() else { return; };
