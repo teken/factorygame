@@ -1,4 +1,9 @@
-use bevy::{input::mouse::MouseWheel, math::vec3, prelude::*, render::primitives::Aabb};
+use bevy::{
+    input::mouse::MouseWheel,
+    math::{vec3, Vec3A},
+    prelude::*,
+    render::primitives::Aabb,
+};
 use bevy_mod_picking::{Highlighting, Hover, PickableBundle, PickingRaycastSet};
 use bevy_prototype_debug_lines::DebugLines;
 
@@ -27,7 +32,7 @@ impl Plugin for GridPlugin {
 struct BuildPlane {}
 
 const RENDER_GRID: bool = true;
-const GRID_SIZE: i32 = 100;
+const GRID_SIZE: i32 = 1000;
 const GRID_CELL_SIZE: usize = 1;
 
 fn setup_build_plane(
@@ -163,7 +168,7 @@ fn grid_cell_clicked(
                 &mut materials,
                 &asset_server,
                 spawner_opts,
-                ele.grid_cell.floor(),
+                ele.grid_cell,
             ),
             Modes::Destroy => {
                 if let Some(ent) = ele.entity {

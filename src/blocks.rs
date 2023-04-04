@@ -1,4 +1,8 @@
-use bevy::{math::vec3, prelude::*, render::primitives::Aabb};
+use bevy::{
+    math::{vec3, Vec3A},
+    prelude::*,
+    render::primitives::Aabb,
+};
 use bevy_mod_picking::PickableBundle;
 use bevy_prototype_debug_lines::DebugShapes;
 use enum_iterator::Sequence;
@@ -14,6 +18,7 @@ pub struct BlockPlugin;
 
 impl Plugin for BlockPlugin {
     fn build(&self, app: &mut App) {
+        app.add_system(display_aabbs);
         app.add_system(furnace_system);
         app.add_system(internal_conveyor_system);
         app.add_system(external_conveyor_system);
@@ -30,26 +35,62 @@ impl Plugin for BlockPlugin {
     }
 }
 
+fn display_aabbs(
+    query: Query<(&Aabb, &GlobalTransform), With<Block>>,
+    mut debug_lines: ResMut<DebugShapes>,
+) {
+    for (aabb, transform) in query.iter() {
+        debug_lines.cuboid().min_max(
+            transform.transform_point(aabb.min().into()).floor(),
+            transform.transform_point(aabb.max().into()).ceil(),
+        );
+    }
+}
+
 #[derive(Component, Reflect)]
 pub struct Block {
-    pub min: Vec3,
-    pub max: Vec3,
     pub block_type: BlockType,
     pub direction: player::Direction,
 }
 
-impl Block {
-    #[inline]
-    pub fn is_next_block_in_direction(&self, b: &Block, direction: player::Direction) -> bool {
-        match direction {
-            player::Direction::North => b.min == self.min + Vec3::X,
-            player::Direction::South => b.min == self.min + Vec3::NEG_X,
-            player::Direction::East => b.min == self.min + Vec3::Z,
-            player::Direction::West => b.min == self.min + Vec3::NEG_Z,
-            player::Direction::Up => b.min == self.min + Vec3::Y,
-            player::Direction::Down => b.min == self.min + Vec3::NEG_Y,
+pub fn is_next_block_in_direction(
+    a: (&Aabb, &GlobalTransform),
+    b: (&Aabb, &GlobalTransform),
+    direction: player::Direction,
+) -> bool {
+    let mut target_vec = a.1.transform_point(a.0.center.into());
+    match direction {
+        player::Direction::North => {
+            target_vec.x = (target_vec.x + a.0.half_extents.x).ceil() + 0.5;
+        }
+        player::Direction::South => {
+            target_vec.x = (target_vec.x - a.0.half_extents.x).floor() - 0.5;
+        }
+        player::Direction::East => {
+            target_vec.z = (target_vec.z + a.0.half_extents.z).ceil() + 0.5;
+        }
+        player::Direction::West => {
+            target_vec.z = (target_vec.z - a.0.half_extents.z).floor() - 0.5;
+        }
+        player::Direction::Up => {
+            target_vec.y = (target_vec.y + a.0.half_extents.y).ceil() + 0.5;
+        }
+        player::Direction::Down => {
+            target_vec.y = (target_vec.y - a.0.half_extents.y).floor() - 0.5;
         }
     }
+
+    let block_aabb = (
+        b.1.transform_point(b.0.min().into()).floor(),
+        b.1.transform_point(b.0.max().into()).ceil(),
+    );
+
+    target_vec.x >= block_aabb.0.x
+        && target_vec.x <= block_aabb.1.x
+        && target_vec.y >= block_aabb.0.y
+        && target_vec.y <= block_aabb.1.y
+        && target_vec.z >= block_aabb.0.z
+        && target_vec.z <= block_aabb.1.z
 }
 
 #[derive(Component, Default, Reflect, Debug)]
@@ -155,8 +196,6 @@ impl Spawn for BlockType {
         click_position: Vec3,
     ) {
         let default_block = Block {
-            min: click_position.floor(),
-            max: click_position.ceil(),
             block_type: BlockType::Debug,
             direction: spawner_options.block_rotation.clone(),
         };
@@ -176,6 +215,10 @@ impl Spawn for BlockType {
                     ..default_block
                 },
                 PickableBundle::default(),
+                Aabb {
+                    half_extents: Vec3A::new(0.5, 0.5, 0.5),
+                    ..Default::default()
+                },
             )),
             BlockType::Furnace => commands.spawn((
                 PbrBundle {
@@ -191,7 +234,6 @@ impl Spawn for BlockType {
                 Furnace::default(),
                 Block {
                     block_type: BlockType::Furnace,
-                    max: click_position.ceil() + vec3(2., 2., 2.),
                     ..default_block
                 },
                 Input::default(),
@@ -232,7 +274,6 @@ impl Spawn for BlockType {
                 Name::new("Splitter"),
                 Splitter::default(),
                 Block {
-                    max: click_position.ceil() + vec3(0., 0., 1.),
                     block_type: BlockType::Splitter,
                     ..default_block
                 },
@@ -276,6 +317,10 @@ impl Spawn for BlockType {
                     ..default_block
                 },
                 PickableBundle::default(),
+                Aabb {
+                    half_extents: Vec3A::new(0.5, 0.5, 0.5),
+                    ..Default::default()
+                },
             )),
         };
     }
@@ -327,15 +372,15 @@ fn internal_conveyor_system(
 }
 
 fn external_conveyor_system(
-    mut input_query: Query<(&Block, &mut Input), With<Conveyor>>,
-    mut output_query: Query<(&Block, &mut Output), With<Conveyor>>,
+    mut input_query: Query<(&Aabb, &GlobalTransform, &Block, &mut Input), With<Conveyor>>,
+    mut output_query: Query<(&Aabb, &GlobalTransform, &Block, &mut Output), With<Conveyor>>,
 ) {
-    for (block, mut input) in input_query.iter_mut() {
-        let output = output_query
-            .iter_mut()
-            .find(|(b, _)| block.is_next_block_in_direction(b, block.direction.reverse()));
+    for (aabb, trans, block, mut input) in input_query.iter_mut() {
+        let output = output_query.iter_mut().find(|(ab, tr, _, _)| {
+            is_next_block_in_direction((aabb, trans), (ab, tr), block.direction.reverse())
+        });
 
-        let Some((_, mut output)) = output else {
+        let Some((_,_,_, mut output)) = output else {
             return;
         };
 
@@ -350,25 +395,27 @@ fn external_conveyor_system(
 }
 
 fn grabber_system(
-    grabber_query: Query<&Block, With<Grabber>>,
-    mut input_query: Query<(&Block, &mut Input)>,
-    mut output_query: Query<(&Block, &mut Output)>,
+    grabber_query: Query<(&Block, &Aabb, &GlobalTransform), With<Grabber>>,
+    mut input_query: Query<(&Aabb, &GlobalTransform, &mut Input)>,
+    mut output_query: Query<(&Aabb, &GlobalTransform, &mut Output)>,
 ) {
-    for block in grabber_query.iter() {
-        let input = input_query
-            .iter_mut()
-            .find(|(b, _)| block.is_next_block_in_direction(b, block.direction.clone()));
-        let output = output_query
-            .iter_mut()
-            .find(|(b, _)| block.is_next_block_in_direction(b, block.direction.reverse()));
+    for (block, aabb, trans) in grabber_query.iter() {
+        let input = input_query.iter_mut().find(|(ab, tr, _)| {
+            is_next_block_in_direction((aabb, trans), (ab, tr), block.direction.clone())
+        });
+        let output = output_query.iter_mut().find(|(ab, tr, _)| {
+            is_next_block_in_direction((aabb, trans), (ab, tr), block.direction.reverse())
+        });
 
-        let Some((_, mut input)) = input else {
+        let Some((_, _, mut input)) = input else {
             return;
         };
 
-        let Some((_, mut output)) = output else {
+        let Some((_, _, mut output)) = output else {
             return;
         };
+
+        println!("Grabber: {:?} -> {:?}", output, input);
 
         if let Some(accepts) = input.accepts.clone() {
             if !output.inventory.is_empty() && output.inventory.contains(&accepts) {
@@ -456,13 +503,16 @@ fn display_build_ghost_system(
 }
 
 fn highlight_selected_block(
-    objects_query: Query<(&Block, Entity), With<BlockClicked>>,
+    objects_query: Query<(&Aabb, &GlobalTransform, Entity), With<BlockClicked>>,
     mut shapes: ResMut<DebugShapes>,
 ) {
-    for (block, _) in objects_query.iter() {
+    for (ab, trans, _) in objects_query.iter() {
         shapes
             .cuboid()
-            .min_max(block.min, block.max)
+            .min_max(
+                trans.transform_point(ab.min().into()).floor(),
+                trans.transform_point(ab.max().into()).ceil(),
+            )
             .color(Color::rgba(0.0, 0.0, 1.0, 0.5))
             .duration(0.);
     }
@@ -489,10 +539,11 @@ fn display_dep_chains(
     input_query: Query<(&GlobalTransform, &Aabb, &Block, Entity), With<Input>>,
     output_query: Query<(&GlobalTransform, &Aabb, &Block, Entity), With<Output>>,
 ) {
+    return;
     for (trans, aabb, block, _) in input_query.iter() {
-        let output = output_query
-            .iter()
-            .find(|(_, _, b, _)| block.is_next_block_in_direction(b, block.direction.reverse()));
+        let output = output_query.iter().find(|(tr, ab, _, _)| {
+            is_next_block_in_direction((aabb, trans), (ab, tr), block.direction.reverse())
+        });
 
         let Some((o_t,o_a,_, _)) = output else {
             continue;
