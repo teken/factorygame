@@ -2,7 +2,7 @@ use bevy::{math::vec3, prelude::*, render::primitives::Aabb};
 use bevy_mod_picking::PickableBundle;
 use bevy_prototype_debug_lines::DebugShapes;
 use enum_iterator::Sequence;
-use std::fmt::Display;
+use std::{fmt::Display, time::Duration};
 
 use crate::{
     grid::GridCellHoveredEvent,
@@ -38,6 +38,20 @@ pub struct Block {
     pub direction: player::Direction,
 }
 
+impl Block {
+    #[inline]
+    pub fn is_next_block_in_direction(&self, b: &Block, direction: player::Direction) -> bool {
+        match direction {
+            player::Direction::North => b.min == self.min + Vec3::X,
+            player::Direction::South => b.min == self.min + Vec3::NEG_X,
+            player::Direction::East => b.min == self.min + Vec3::Z,
+            player::Direction::West => b.min == self.min + Vec3::NEG_Z,
+            player::Direction::Up => b.min == self.min + Vec3::Y,
+            player::Direction::Down => b.min == self.min + Vec3::NEG_Y,
+        }
+    }
+}
+
 #[derive(Component, Default, Reflect, Debug)]
 pub struct Input {
     pub accepts: Option<ItemStack>,
@@ -59,6 +73,14 @@ pub struct LogOutput;
 pub struct Process {
     pub reaction: Option<Reaction>,
     pub timer: Timer,
+}
+
+#[derive(Component, Default, Reflect)]
+pub struct Source {
+    pub source: Option<ItemStack>,
+    pub fequency: Duration,
+    pub timer: Timer,
+    pub inventory: Inventory,
 }
 
 impl Process {
@@ -88,8 +110,18 @@ impl Display for BlockType {
 #[derive(Component, Default)]
 pub struct Furnace;
 
-#[derive(Component, Default)]
-pub struct Conveyor;
+#[derive(Component)]
+pub struct Conveyor {
+    pub timer: Timer,
+}
+
+impl Default for Conveyor {
+    fn default() -> Self {
+        Self {
+            timer: Timer::new(Duration::from_millis(1000), TimerMode::Repeating),
+        }
+    }
+}
 
 #[derive(Component, Default)]
 pub struct Splitter;
@@ -147,10 +179,10 @@ impl Spawn for BlockType {
             )),
             BlockType::Furnace => commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(shape::Cube::new(1.0).into()),
+                    mesh: meshes.add(shape::Cube::new(3.).into()),
                     material: materials.add(Color::RED.into()),
                     transform: Transform::from_translation(
-                        click_position.floor() + vec3(0.5, 0.5, 0.5),
+                        click_position.floor() + vec3(0.5, 1.5, 0.5),
                     )
                     .with_rotation(spawner_options.block_rotation.to_quat()),
                     ..default()
@@ -159,6 +191,7 @@ impl Spawn for BlockType {
                 Furnace::default(),
                 Block {
                     block_type: BlockType::Furnace,
+                    max: click_position.ceil() + vec3(2., 2., 2.),
                     ..default_block
                 },
                 Input::default(),
@@ -223,7 +256,6 @@ impl Spawn for BlockType {
                     block_type: BlockType::Storage,
                     ..default_block
                 },
-                // Inventory::default(),
                 Input::default(),
                 Output::default(),
                 PickableBundle::default(),
@@ -279,10 +311,17 @@ fn furnace_system(
     }
 }
 
-fn internal_conveyor_system(mut query: Query<(&mut Input, &mut Output), With<Conveyor>>) {
-    for (mut input, mut output) in query.iter_mut() {
-        if let Some(item) = input.inventory.pop() {
-            output.inventory.push(item);
+fn internal_conveyor_system(
+    mut query: Query<(&mut Input, &mut Output, &mut Conveyor)>,
+    time: Res<Time>,
+) {
+    for (mut input, mut output, mut conveyor) in query.iter_mut() {
+        conveyor.timer.tick(time.delta());
+        if conveyor.timer.finished() {
+            if let Some(item) = input.inventory.pop() {
+                output.inventory.push(item);
+            }
+            conveyor.timer.reset();
         }
     }
 }
@@ -292,39 +331,9 @@ fn external_conveyor_system(
     mut output_query: Query<(&Block, &mut Output), With<Conveyor>>,
 ) {
     for (block, mut input) in input_query.iter_mut() {
-        let output;
-        match block.direction {
-            player::Direction::North => {
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x - 1. && t.min.y == block.min.y && t.min.z == block.min.z
-                });
-            }
-            player::Direction::South => {
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x + 1. && t.min.y == block.min.y && t.min.z == block.min.z
-                });
-            }
-            player::Direction::East => {
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z - 1.
-                });
-            }
-            player::Direction::West => {
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z + 1.
-                });
-            }
-            player::Direction::Up => {
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y - 1. && t.min.z == block.min.z
-                });
-            }
-            player::Direction::Down => {
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y + 1. && t.min.z == block.min.z
-                });
-            }
-        }
+        let output = output_query
+            .iter_mut()
+            .find(|(b, _)| block.is_next_block_in_direction(b, block.direction.reverse()));
 
         let Some((_, mut output)) = output else {
             return;
@@ -346,58 +355,12 @@ fn grabber_system(
     mut output_query: Query<(&Block, &mut Output)>,
 ) {
     for block in grabber_query.iter() {
-        let input;
-        let output;
-        match block.direction {
-            player::Direction::North => {
-                input = input_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x + 1. && t.min.y == block.min.y && t.min.z == block.min.z
-                });
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x - 1. && t.min.y == block.min.y && t.min.z == block.min.z
-                });
-            }
-            player::Direction::South => {
-                input = input_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x - 1. && t.min.y == block.min.y && t.min.z == block.min.z
-                });
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x + 1. && t.min.y == block.min.y && t.min.z == block.min.z
-                });
-            }
-            player::Direction::East => {
-                input = input_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z + 1.
-                });
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z - 1.
-                });
-            }
-            player::Direction::West => {
-                input = input_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z - 1.
-                });
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y && t.min.z == block.min.z + 1.
-                });
-            }
-            player::Direction::Up => {
-                input = input_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y + 1. && t.min.z == block.min.z
-                });
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y - 1. && t.min.z == block.min.z
-                });
-            }
-            player::Direction::Down => {
-                input = input_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y - 1. && t.min.z == block.min.z
-                });
-                output = output_query.iter_mut().find(|(t, _)| {
-                    t.min.x == block.min.x && t.min.y == block.min.y + 1. && t.min.z == block.min.z
-                });
-            }
-        }
+        let input = input_query
+            .iter_mut()
+            .find(|(b, _)| block.is_next_block_in_direction(b, block.direction.clone()));
+        let output = output_query
+            .iter_mut()
+            .find(|(b, _)| block.is_next_block_in_direction(b, block.direction.reverse()));
 
         let Some((_, mut input)) = input else {
             return;
@@ -527,29 +490,9 @@ fn display_dep_chains(
     output_query: Query<(&GlobalTransform, &Aabb, &Block, Entity), With<Output>>,
 ) {
     for (trans, aabb, block, _) in input_query.iter() {
-        let output = output_query.iter().find(|(_, _, b, _)| {
-            // entity != *e
-            match block.direction {
-                player::Direction::North => {
-                    b.min.x == block.min.x - 1. && b.min.y == block.min.y && b.min.z == block.min.z
-                }
-                player::Direction::South => {
-                    b.min.x == block.min.x + 1. && b.min.y == block.min.y && b.min.z == block.min.z
-                }
-                player::Direction::East => {
-                    b.min.x == block.min.x && b.min.y == block.min.y && b.min.z == block.min.z - 1.
-                }
-                player::Direction::West => {
-                    b.min.x == block.min.x && b.min.y == block.min.y && b.min.z == block.min.z + 1.
-                }
-                player::Direction::Up => {
-                    b.min.x == block.min.x && b.min.y == block.min.y - 1. && b.min.z == block.min.z
-                }
-                player::Direction::Down => {
-                    b.min.x == block.min.x && b.min.y == block.min.y + 1. && b.min.z == block.min.z
-                }
-            }
-        });
+        let output = output_query
+            .iter()
+            .find(|(_, _, b, _)| block.is_next_block_in_direction(b, block.direction.reverse()));
 
         let Some((o_t,o_a,_, _)) = output else {
             continue;
