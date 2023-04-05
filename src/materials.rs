@@ -92,16 +92,15 @@ impl Display for ItemStackType {
 impl ItemStackType {
     pub fn to_item_stack(self, quantity: u32) -> ItemStack {
         ItemStack {
-            item_type: self.clone(),
+            item_type: self,
             quantity,
         }
     }
 
     pub fn quantity_limit(&self) -> u32 {
-        ITEMSTACKTYPE_QUANTITY_LIMITS
+        *ITEMSTACKTYPE_QUANTITY_LIMITS
             .get(self)
             .unwrap_or(&DEFAULT_STATIC_LIMIT)
-            .clone()
     }
 }
 
@@ -130,7 +129,7 @@ impl Inventory {
             })
             .sum::<u32>();
 
-        return total_local_quantity >= filter.quantity;
+        total_local_quantity >= filter.quantity
     }
     pub fn transfer(&mut self, requested: &ItemStack, destination: &mut Inventory) {
         let total_local_quantity = self
@@ -165,10 +164,6 @@ impl Inventory {
                     quantity: amount_left_to_take,
                 });
                 amount_left_to_take = 0;
-            } else if item.quantity < amount_left_to_take {
-                destination.push(item.clone());
-                amount_left_to_take -= item.quantity;
-                item.quantity = 0;
             } else {
                 destination.push(item.clone());
                 amount_left_to_take -= item.quantity;
@@ -197,6 +192,7 @@ impl Inventory {
             if stack.item_type != item.item_type {
                 continue;
             }
+
             if stack.quantity + amount_left_to_add < stack.item_type.quantity_limit() {
                 stack.quantity += amount_left_to_add;
                 amount_left_to_add = 0;
@@ -251,9 +247,6 @@ impl Inventory {
             if stack.quantity > amount_left_to_take {
                 stack.quantity -= amount_left_to_take;
                 amount_left_to_take = 0;
-            } else if stack.quantity < amount_left_to_take {
-                amount_left_to_take -= stack.quantity;
-                stack.quantity = 0;
             } else {
                 amount_left_to_take -= stack.quantity;
                 stack.quantity = 0;

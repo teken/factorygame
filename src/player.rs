@@ -175,7 +175,7 @@ fn player_controller(
         let mut any = false;
         if rotation_move.length_squared() > 0.0 {
             any = true;
-            let window = get_primary_window_size(&windows);
+            let window = get_primary_window_size(windows);
             let delta_x = {
                 let delta = rotation_move.x / window.x * std::f32::consts::PI * 2.0;
                 if pan_orbit.upside_down {
@@ -188,11 +188,11 @@ fn player_controller(
             let yaw = Quat::from_rotation_y(-delta_x);
             let pitch = Quat::from_rotation_x(-delta_y);
             transform.rotation = yaw * transform.rotation; // rotate around global y axis
-            transform.rotation = transform.rotation * pitch; // rotate around local x axis
+            transform.rotation *= pitch; // rotate around local x axis
         } else if pan.length_squared() > 0.0 {
             any = true;
             // make panning distance independent of resolution and FOV,
-            let window = get_primary_window_size(&windows);
+            let window = get_primary_window_size(windows);
             if let Projection::Perspective(projection) = projection {
                 pan *= Vec2::new(projection.fov * projection.aspect_ratio, projection.fov) / window;
             }
@@ -225,7 +225,7 @@ fn player_controller(
 }
 
 fn get_primary_window_size(window: &Window) -> Vec2 {
-    Vec2::new(window.width() as f32, window.height() as f32)
+    Vec2::new(window.width(), window.height())
 }
 
 /// Spawn a camera like this
@@ -287,6 +287,9 @@ fn player_hotkeys(keys: Res<Input<KeyCode>>, mut query: Query<&mut SpawnerOption
                 Modes::Build => GridSelectMode::OnTopOfBlock,
                 Modes::Destroy => GridSelectMode::Block,
             }
+        } else if keys.just_pressed(KeyCode::Escape) {
+            ele.player_mode = Modes::Overview;
+            ele.grid_select_mode = GridSelectMode::Block;
         }
     }
 }
@@ -313,11 +316,12 @@ fn dev_ui(
 
     egui::SidePanel::right("selected_block_panel")
         .default_width(200.0)
-        .show(&egui_ctx.ctx_mut(), |ui| {
+        .show(egui_ctx.ctx_mut(), |ui| {
             ui.group(|ui| {
                 ui.heading("Player Settings");
                 ui.separator();
                 ui.label(format!("Mode (Q): {:?}", spawn_options.player_mode));
+                ui.label(format!("Grid Mode: {:?}", spawn_options.grid_select_mode));
 
                 enum_dropdown::<Direction>(
                     ui,
@@ -347,30 +351,24 @@ fn dev_ui(
                                     .animate(process.timer.percent() > 0.),
                             );
                         }
-                        match block.block_type {
-                            BlockType::Furnace => {
-                                egui::ComboBox::from_id_source("furance_process")
-                                    .selected_text(format!(
-                                        "{}",
-                                        match &ui_state.selected_reaction {
-                                            Some(reaction) => format!("{}", reaction),
-                                            None => "None".to_string(),
-                                        }
-                                    ))
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(
-                                            &mut ui_state.selected_reaction,
-                                            None,
-                                            "None",
-                                        );
-                                        ui.selectable_value(
-                                            &mut ui_state.selected_reaction,
-                                            Some(PROCESS_IRON_TO_GOLD.clone()),
-                                            format!("{}", PROCESS_IRON_TO_GOLD.clone()),
-                                        );
-                                    });
-                            }
-                            _ => {}
+                        if let BlockType::Furnace = block.block_type {
+                            egui::ComboBox::from_id_source("furance_process")
+                                .selected_text(match &ui_state.selected_reaction {
+                                    Some(reaction) => reaction.to_string(),
+                                    None => "None".to_string(),
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut ui_state.selected_reaction,
+                                        None,
+                                        "None",
+                                    );
+                                    ui.selectable_value(
+                                        &mut ui_state.selected_reaction,
+                                        Some(PROCESS_IRON_TO_GOLD.clone()),
+                                        format!("{}", PROCESS_IRON_TO_GOLD.clone()),
+                                    );
+                                });
                         }
                         if ui_state.selected_reaction.is_some()
                             && process.reaction != ui_state.selected_reaction

@@ -49,7 +49,7 @@ fn setup_build_plane(
             initial: mat.clone(),
             hovered: Some(mat.clone()),
             pressed: Some(mat.clone()),
-            selected: Some(mat.clone()),
+            selected: Some(mat),
         },
         Name::new("Build Plane"),
     ));
@@ -128,7 +128,7 @@ pub struct GridCellClickedEvent {
     pub entity: Option<Entity>,
 }
 
-#[derive(Default, PartialEq, Clone)]
+#[derive(Default, PartialEq, Clone, Debug)]
 pub enum GridSelectMode {
     #[default]
     Block,
@@ -181,14 +181,15 @@ fn grid_cell_hover(
     mouse: Res<Input<MouseButton>>,
     mut writer: EventWriter<GridCellClickedEvent>,
 ) {
-    if mouse.just_pressed(MouseButton::Left) {
-        for ele in reader.iter() {
-            writer.send(GridCellClickedEvent {
-                grid_cell: ele.grid_cell,
-                world_pos: ele.world_pos,
-                entity: ele.entity,
-            });
-        }
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    for ele in reader.iter() {
+        writer.send(GridCellClickedEvent {
+            grid_cell: ele.grid_cell,
+            world_pos: ele.world_pos,
+            entity: ele.entity,
+        });
     }
     reader.clear();
 }
@@ -217,17 +218,17 @@ fn grid_cell_select(
         if spawner_opts.grid_select_mode == GridSelectMode::Block {
             grid_cell_hovered_event_writer.send(GridCellHoveredEvent {
                 grid_cell: trans.transform_point(aabb.center.into()),
-                world_pos: position.clone(),
+                world_pos: *position,
                 entity: Some(entity),
             });
         } else {
-            let normal = (trans.transform_point(aabb.center.into()) - position.clone())
+            let normal = (trans.transform_point(aabb.center.into()) - *position)
                 .normalize_or_zero()
                 .round();
 
             grid_cell_hovered_event_writer.send(GridCellHoveredEvent {
                 grid_cell: trans.transform_point(aabb.center.into()) - normal,
-                world_pos: position.clone(),
+                world_pos: *position,
                 entity: Some(entity),
             });
         }
@@ -252,7 +253,7 @@ fn grid_cell_select(
 
     grid_cell_hovered_event_writer.send(GridCellHoveredEvent {
         grid_cell: mod_position.floor() + vec3(0.5, 0.5, 0.5),
-        world_pos: position.clone(),
+        world_pos: *position,
         entity: None,
     });
 }
@@ -262,16 +263,18 @@ fn build_plane_manipulation(
     mut ev_scroll: EventReader<MouseWheel>,
     keys: Res<Input<KeyCode>>,
 ) {
-    if keys.pressed(KeyCode::LShift) {
-        let mut scroll = 0.0;
-        for ev in ev_scroll.iter() {
-            scroll += ev.y;
-        }
+    if !keys.pressed(KeyCode::LShift) {
+        return;
+    }
 
-        for (mut transform, _) in build_plane_query.iter_mut() {
-            if scroll.abs() > 0.0 {
-                transform.translation.y += scroll * GRID_CELL_SIZE as f32;
-            }
+    let mut scroll = 0.0;
+    for ev in ev_scroll.iter() {
+        scroll += ev.y;
+    }
+
+    for (mut transform, _) in build_plane_query.iter_mut() {
+        if scroll.abs() > 0.0 {
+            transform.translation.y += scroll * GRID_CELL_SIZE as f32;
         }
     }
 }

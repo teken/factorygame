@@ -75,7 +75,7 @@ pub struct Source {
 impl Process {
     pub fn set_reaction(&mut self, reaction: &Reaction) {
         self.reaction = Some(reaction.clone());
-        self.timer = Timer::new(reaction.duration.clone(), TimerMode::Repeating);
+        self.timer = Timer::new(reaction.duration, TimerMode::Repeating);
     }
 }
 
