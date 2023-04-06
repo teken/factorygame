@@ -1,4 +1,5 @@
 mod blocks;
+mod city_planner;
 mod components;
 mod grid;
 mod inventory;
@@ -16,6 +17,7 @@ use bevy_obj::ObjPlugin;
 use bevy_prototype_debug_lines::DebugLinesPlugin;
 use bevy_rapier3d::prelude::*;
 use blocks::BlockPlugin;
+use city_planner::CityPlannerPlugin;
 use components::ComponentPlugin;
 use grid::GridPlugin;
 use player::PlayerPlugin;
@@ -29,6 +31,7 @@ fn main() {
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_plugin(DebugLinesPlugin::with_depth_test(true))
         .add_plugins(DefaultPickingPlugins)
+        .add_plugin(CityPlannerPlugin)
         .add_plugin(ComponentPlugin)
         .add_plugin(GridPlugin)
         .add_plugin(PlayerPlugin)
@@ -46,6 +49,7 @@ fn setup_lights(mut commands: Commands, mut ambient_light: ResMut<AmbientLight>)
 
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
+            illuminance: 50000.0,
             shadows_enabled: true,
             ..default()
         },

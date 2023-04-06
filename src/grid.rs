@@ -27,7 +27,7 @@ impl Plugin for GridPlugin {
 #[derive(Component)]
 struct BuildPlane {}
 
-const RENDER_GRID: bool = true;
+const RENDER_GRID: bool = false;
 const GRID_SIZE: i32 = 1000;
 const GRID_CELL_SIZE: usize = 1;
 
