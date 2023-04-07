@@ -2,6 +2,7 @@ use bevy::{
     prelude::*,
     render::{mesh, render_resource::PrimitiveTopology},
 };
+use bevy_prototype_debug_lines::DebugShapes;
 use bracket_lib::{
     prelude::{FastNoise, FractalType, Interp, NoiseType},
     random::RandomNumberGenerator,
@@ -12,90 +13,207 @@ pub struct CityPlannerPlugin;
 impl Plugin for CityPlannerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<NoiseGeneration>();
+        app.init_resource::<CityBlocks>();
         app.add_startup_system(generate_heightmap);
         app.add_startup_system(spawn_ground_plane);
+        app.add_startup_system(generate_city_blocks);
+        app.add_startup_system(generate_city_blocks_buildings.after(generate_city_blocks));
+        app.add_system(spawn_block_wireframes);
     }
 }
 
-const ENABLE_WIREFRAME: bool = false;
-const CITY_BLOCK_COUNT: i32 = 10;
-const CITY_BLOCK_SIZE: i32 = 100;
+const ENABLE_BLOCK_WIREFRAME: bool = true;
+const ENABLE_FLOOR_WIREFRAME: bool = false;
+const ENABLE_BUILDING_WIREFRAME: bool = true;
+const CITY_BLOCK_COUNT: i32 = 1;
+const CITY_BLOCK_SIZE_X: i32 = 100;
+const CITY_BLOCK_SIZE_Z: i32 = 100;
+const CITY_BLOCK_GAP: i32 = 10;
+const CITY_BLOCK_FLOOR_HEIGHT: i32 = 4;
+const BUILDING_SLOT_MIN_SIZE: i32 = 8;
+const BUILDING_MIN_WIDTH: i32 = 8;
+const BUILDING_MIN_DEPTH: i32 = 32;
 
 fn spawn_ground_plane(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut noise_gen: ResMut<NoiseGeneration>,
 ) {
-    // let mut mesh = if ENABLE_WIREFRAME {
-    //     Mesh::new(PrimitiveTopology::LineList)
-    // } else {
-    //     Mesh::new(PrimitiveTopology::TriangleList)
-    // };
-
-    // let mut vertices: Vec<[f32; 3]> = Vec::new();
-    // let mut indices: Vec<u32> = Vec::new();
-    // let mut colors: Vec<[f32; 3]> = Vec::new();
-
-    // for vertex in &terrain_mesh_data.vertices {
-    //     vertices.push([vertex.x, vertex.y, vertex.z]);
-
-    //     let color = grad.get(vertex.y);
-    //     let raw_float: Srgb<f32> = Srgb::<f32>::from_linear(color.into());
-    //     colors.push([raw_float.red, raw_float.green, raw_float.blue]);
-    // }
-
-    // // Positions of the vertices
-    // // See https://bevy-cheatbook.github.io/features/coords.html
-    // mesh.insert_attribute(
-    //     Mesh::ATTRIBUTE_POSITION,
-    //     vec![[0., 0., 0.], [1., 2., 1.], [2., 0., 0.]],
-    // );
-
-    // // In this example, normals and UVs don't matter,
-    // // so we just use the same value for all of them
-    // mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0., 1., 0.]; 3]);
-    // mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0., 0.]; 3]);
-
-    // // A triangle using vertices 0, 2, and 1.
-    // // Note: order matters. [0, 1, 2] will be flipped upside down, and you won't see it from behind!
-    // mesh.set_indices(Some(mesh::Indices::U32(vec![0, 2, 1])));
-
     commands.spawn(PbrBundle {
-        mesh: meshes
-            .add(shape::Plane::from_size((CITY_BLOCK_COUNT * CITY_BLOCK_SIZE) as f32 * 2.5).into()),
+        mesh: meshes.add(
+            shape::Plane::from_size((CITY_BLOCK_COUNT * CITY_BLOCK_SIZE_Z) as f32 * 2.5).into(),
+        ),
         material: materials.add(Color::rgb_u8(30, 30, 30).into()),
         ..default()
     });
+}
 
-    for x in -CITY_BLOCK_COUNT..CITY_BLOCK_COUNT {
-        for z in -CITY_BLOCK_COUNT..CITY_BLOCK_COUNT {
-            let height =
-                (noise_gen.noise.get_noise(x as f32 / 10., z as f32 / 10.) * 100.0).abs() + 10.;
+fn generate_city_blocks(mut city_blocks: ResMut<CityBlocks>, noise_gen: Res<NoiseGeneration>) {
+    for x in -CITY_BLOCK_COUNT..=CITY_BLOCK_COUNT {
+        for z in -CITY_BLOCK_COUNT..=CITY_BLOCK_COUNT {
+            let height = (noise_gen.noise.get_noise(x as f32 / 10., z as f32 / 10.) * 100.0).abs();
 
-            commands.spawn(PbrBundle {
-                mesh: meshes.add(
-                    shape::Box::new(
-                        (CITY_BLOCK_SIZE - 10) as f32,
-                        height,
-                        (CITY_BLOCK_SIZE - 10) as f32,
-                    )
-                    .into(),
-                ),
-                material: materials.add(Color::rgb_u8(201, 201, 201).into()),
-                transform: Transform::from_translation(Vec3::new(
-                    x as f32 * 100.0,
-                    height / 2.,
-                    z as f32 * 100.0,
-                )),
-                ..default()
+            city_blocks.blocks.push(CityBlock {
+                x,
+                z,
+                height,
+                ..Default::default()
             });
+        }
+    }
+}
+
+fn generate_city_blocks_buildings(mut city_blocks: ResMut<CityBlocks>) {
+    let x_length = CITY_BLOCK_SIZE_X - CITY_BLOCK_GAP;
+    let z_length = CITY_BLOCK_SIZE_Z - CITY_BLOCK_GAP;
+
+    for ele in city_blocks.blocks.iter_mut() {
+        if ele.height < 8. {
+            continue;
+        }
+
+        let mut total_x_convered = 0;
+        let mut total_z_convered = 0;
+        while total_z_convered < z_length {
+            println!("{} {}", total_x_convered, total_z_convered);
+            while total_x_convered < x_length {
+                println!("{} {}", total_x_convered, total_z_convered);
+                let building = BuildingSlot {
+                    x: total_x_convered,
+                    z: total_z_convered,
+                    width: if total_x_convered + BUILDING_SLOT_MIN_SIZE + BUILDING_SLOT_MIN_SIZE
+                        > x_length
+                    {
+                        x_length - total_x_convered
+                    } else {
+                        BUILDING_SLOT_MIN_SIZE
+                    },
+                    height: ele.height as i32,
+                    depth: if total_z_convered + BUILDING_SLOT_MIN_SIZE + BUILDING_SLOT_MIN_SIZE
+                        > z_length
+                    {
+                        z_length - total_z_convered
+                    } else {
+                        BUILDING_SLOT_MIN_SIZE
+                    },
+                };
+
+                total_x_convered += building.width;
+                ele.buildings.push(building);
+            }
+            total_x_convered = 0;
+            total_z_convered += BUILDING_SLOT_MIN_SIZE;
+        }
+
+        println!("{} buildings", ele.buildings.len());
+    }
+}
+
+#[derive(Resource, Default)]
+struct CityBlocks {
+    blocks: Vec<CityBlock>,
+}
+
+#[derive(Default)]
+struct CityBlock {
+    x: i32,
+    z: i32,
+    height: f32,
+    buildings: Vec<BuildingSlot>,
+}
+
+struct BuildingSlot {
+    /// x are relative to the city block
+    x: i32,
+    /// z are relative to the city block
+    z: i32,
+    height: i32,
+    width: i32,
+    depth: i32,
+}
+
+fn spawn_block_wireframes(city_blocks: Res<CityBlocks>, mut debug_shapes: ResMut<DebugShapes>) {
+    if !ENABLE_BLOCK_WIREFRAME && !ENABLE_FLOOR_WIREFRAME {
+        return;
+    }
+
+    let x_length = CITY_BLOCK_SIZE_X - CITY_BLOCK_GAP;
+    let z_length = CITY_BLOCK_SIZE_Z - CITY_BLOCK_GAP;
+
+    for block in city_blocks.blocks.iter() {
+        if block.height < 8. {
+            continue;
+        }
+
+        if ENABLE_BLOCK_WIREFRAME {
+            debug_shapes
+                .cuboid()
+                .min_max(
+                    Vec3::new(
+                        ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32,
+                        0.,
+                        ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32,
+                    ),
+                    Vec3::new(
+                        ((block.x * CITY_BLOCK_SIZE_X) + (x_length / 2)) as f32,
+                        block.height,
+                        ((block.z * CITY_BLOCK_SIZE_Z) + (z_length / 2)) as f32,
+                    ),
+                )
+                .color(Color::rgb_u8(201, 201, 201));
+        }
+        if ENABLE_FLOOR_WIREFRAME {
+            for y in (CITY_BLOCK_FLOOR_HEIGHT..((block.height as i32) - CITY_BLOCK_FLOOR_HEIGHT))
+                .step_by(CITY_BLOCK_FLOOR_HEIGHT as usize)
+            {
+                debug_shapes
+                    .cuboid()
+                    .min_max(
+                        Vec3::new(
+                            ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32,
+                            y as f32,
+                            ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32,
+                        ),
+                        Vec3::new(
+                            ((block.x * CITY_BLOCK_SIZE_X) + (x_length / 2)) as f32,
+                            y as f32,
+                            ((block.z * CITY_BLOCK_SIZE_Z) + (z_length / 2)) as f32,
+                        ),
+                    )
+                    .color(Color::rgb_u8(201, 201, 201));
+            }
+        }
+        if ENABLE_BUILDING_WIREFRAME {
+            for building in block.buildings.iter() {
+                debug_shapes
+                    .cuboid()
+                    .min_max(
+                        Vec3::new(
+                            ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
+                                + building.x as f32,
+                            0.,
+                            ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
+                                + building.z as f32,
+                        ),
+                        Vec3::new(
+                            ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
+                                + building.x as f32
+                                + building.width as f32,
+                            building.height as f32,
+                            ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
+                                + building.z as f32
+                                + building.depth as f32,
+                        ),
+                    )
+                    .color(Color::rgb_u8(0, 0, 201));
+            }
         }
     }
 }
 
 #[derive(Resource)]
 struct NoiseGeneration {
+    rng: RandomNumberGenerator,
     noise: FastNoise,
 }
 
@@ -111,7 +229,7 @@ impl Default for NoiseGeneration {
         noise.set_fractal_lacunarity(2.0);
         noise.set_frequency(2.0);
 
-        Self { noise }
+        Self { rng, noise }
     }
 }
 

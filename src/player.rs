@@ -240,6 +240,9 @@ fn spawn_player(mut commands: Commands) {
         SpawnerOptions::default(),
         Camera3dBundle {
             transform: Transform::from_translation(translation).looking_at(Vec3::ZERO, Vec3::Y),
+            camera: Camera {
+                ..Default::default()
+            },
             ..Default::default()
         },
         PlayerPluginCamera {
