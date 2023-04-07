@@ -1,7 +1,4 @@
-use bevy::{
-    prelude::*,
-    render::{mesh, render_resource::PrimitiveTopology},
-};
+use bevy::prelude::*;
 use bevy_prototype_debug_lines::DebugShapes;
 use bracket_lib::{
     prelude::{FastNoise, FractalType, Interp, NoiseType},
@@ -26,7 +23,7 @@ impl Plugin for CityPlannerPlugin {
 const ENABLE_BLOCK_WIREFRAME: bool = false;
 const ENABLE_FLOOR_WIREFRAME: bool = false;
 const ENABLE_BUILDING_WIREFRAME: bool = true;
-const CITY_BLOCK_COUNT: i32 = 1;
+const CITY_BLOCK_COUNT: i32 = 10;
 const CITY_BLOCK_SIZE_X: i32 = 100;
 const CITY_BLOCK_SIZE_Z: i32 = 100;
 const CITY_BLOCK_GAP: i32 = 10;
@@ -36,6 +33,7 @@ const CITY_BLOCK_BUILD_MAX_COUNT: i32 = 30;
 const BUILDING_SLOT_MIN_SIZE: i32 = 8;
 const BUILDING_MIN_WIDTH: i32 = 8;
 const BUILDING_MIN_DEPTH: i32 = 32;
+const LLOYD_RELAXATION_ITERATIONS: usize = 5;
 
 fn spawn_ground_plane(
     mut commands: Commands,
@@ -91,7 +89,7 @@ fn generate_city_blocks_buildings(
                 )
             })
             .collect::<Vec<_>>();
-        for _ in 0..5 {
+        for _ in 0..LLOYD_RELAXATION_ITERATIONS {
             points = voronoi::lloyd_relaxation(points, x_length as f64);
         }
 
@@ -99,7 +97,7 @@ fn generate_city_blocks_buildings(
         for buildings in voronoi::make_polygons(&diagram).iter() {
             ele.buildings.push(BuildingSlot {
                 verts: buildings.to_vec(),
-                height: noise_gen.rng.range(8, ele.height as i32),
+                height: noise_gen.rng.range(8, (ele.height + 1.) as i32),
             })
         }
     }
@@ -175,57 +173,29 @@ fn spawn_block_wireframes(city_blocks: Res<CityBlocks>, mut debug_shapes: ResMut
             }
         }
         if ENABLE_BUILDING_WIREFRAME {
-            // for building in block.buildings.iter() {
-            //     debug_shapes
-            //         .cuboid()
-            //         .min_max(
-            //             Vec3::new(
-            //                 ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
-            //                     + building.x as f32,
-            //                 0.,
-            //                 ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
-            //                     + building.z as f32,
-            //             ),
-            //             Vec3::new(
-            //                 ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
-            //                     + building.x as f32
-            //                     + building.width as f32,
-            //                 building.height as f32,
-            //                 ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
-            //                     + building.z as f32
-            //                     + building.depth as f32,
-            //             ),
-            //         )
-            //         .color(Color::rgb_u8(0, 0, 201));
-            // }
-
             for slot in block.buildings.iter() {
-                let mut last_point: Option<&Point> = None;
-                for line in slot.verts.iter() {
-                    if last_point.is_none() {
-                        last_point = Some(line);
-                        continue;
-                    }
+                let mut last_point: &Point = slot.verts.last().unwrap();
+                for point in slot.verts.iter() {
                     debug_shapes
                         .line()
                         .start_end(
                             Vec3::new(
                                 ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
-                                    + last_point.unwrap().x.0 as f32,
+                                    + last_point.x.0 as f32,
                                 slot.height as f32,
                                 ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
-                                    + last_point.unwrap().y.0 as f32,
+                                    + last_point.y.0 as f32,
                             ),
                             Vec3::new(
                                 ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
-                                    + line.x.0 as f32,
+                                    + point.x.0 as f32,
                                 slot.height as f32,
                                 ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
-                                    + line.y.0 as f32,
+                                    + point.y.0 as f32,
                             ),
                         )
                         .color(Color::rgb_u8(0, 0, 201));
-                    last_point = Some(line);
+                    last_point = point;
                 }
             }
         }
