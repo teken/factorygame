@@ -7,6 +7,7 @@ use bracket_lib::{
     prelude::{FastNoise, FractalType, Interp, NoiseType},
     random::RandomNumberGenerator,
 };
+use voronoi::Point;
 
 pub struct CityPlannerPlugin;
 
@@ -22,7 +23,7 @@ impl Plugin for CityPlannerPlugin {
     }
 }
 
-const ENABLE_BLOCK_WIREFRAME: bool = true;
+const ENABLE_BLOCK_WIREFRAME: bool = false;
 const ENABLE_FLOOR_WIREFRAME: bool = false;
 const ENABLE_BUILDING_WIREFRAME: bool = true;
 const CITY_BLOCK_COUNT: i32 = 1;
@@ -30,6 +31,8 @@ const CITY_BLOCK_SIZE_X: i32 = 100;
 const CITY_BLOCK_SIZE_Z: i32 = 100;
 const CITY_BLOCK_GAP: i32 = 10;
 const CITY_BLOCK_FLOOR_HEIGHT: i32 = 4;
+const CITY_BLOCK_BUILD_MIN_COUNT: i32 = 10;
+const CITY_BLOCK_BUILD_MAX_COUNT: i32 = 30;
 const BUILDING_SLOT_MIN_SIZE: i32 = 8;
 const BUILDING_MIN_WIDTH: i32 = 8;
 const BUILDING_MIN_DEPTH: i32 = 32;
@@ -63,7 +66,10 @@ fn generate_city_blocks(mut city_blocks: ResMut<CityBlocks>, noise_gen: Res<Nois
     }
 }
 
-fn generate_city_blocks_buildings(mut city_blocks: ResMut<CityBlocks>) {
+fn generate_city_blocks_buildings(
+    mut city_blocks: ResMut<CityBlocks>,
+    mut noise_gen: ResMut<NoiseGeneration>,
+) {
     let x_length = CITY_BLOCK_SIZE_X - CITY_BLOCK_GAP;
     let z_length = CITY_BLOCK_SIZE_Z - CITY_BLOCK_GAP;
 
@@ -72,40 +78,30 @@ fn generate_city_blocks_buildings(mut city_blocks: ResMut<CityBlocks>) {
             continue;
         }
 
-        let mut total_x_convered = 0;
-        let mut total_z_convered = 0;
-        while total_z_convered < z_length {
-            println!("{} {}", total_x_convered, total_z_convered);
-            while total_x_convered < x_length {
-                println!("{} {}", total_x_convered, total_z_convered);
-                let building = BuildingSlot {
-                    x: total_x_convered,
-                    z: total_z_convered,
-                    width: if total_x_convered + BUILDING_SLOT_MIN_SIZE + BUILDING_SLOT_MIN_SIZE
-                        > x_length
-                    {
-                        x_length - total_x_convered
-                    } else {
-                        BUILDING_SLOT_MIN_SIZE
-                    },
-                    height: ele.height as i32,
-                    depth: if total_z_convered + BUILDING_SLOT_MIN_SIZE + BUILDING_SLOT_MIN_SIZE
-                        > z_length
-                    {
-                        z_length - total_z_convered
-                    } else {
-                        BUILDING_SLOT_MIN_SIZE
-                    },
-                };
+        let building_count = noise_gen
+            .rng
+            .range(CITY_BLOCK_BUILD_MIN_COUNT, CITY_BLOCK_BUILD_MAX_COUNT);
 
-                total_x_convered += building.width;
-                ele.buildings.push(building);
-            }
-            total_x_convered = 0;
-            total_z_convered += BUILDING_SLOT_MIN_SIZE;
+        let mut points = (0..building_count)
+            .into_iter()
+            .map(|_| {
+                Point::new(
+                    noise_gen.rng.range(0, x_length) as f64,
+                    noise_gen.rng.range(0, z_length) as f64,
+                )
+            })
+            .collect::<Vec<_>>();
+        for _ in 0..5 {
+            points = voronoi::lloyd_relaxation(points, x_length as f64);
         }
 
-        println!("{} buildings", ele.buildings.len());
+        let diagram = voronoi::voronoi(points, x_length as f64);
+        for buildings in voronoi::make_polygons(&diagram).iter() {
+            ele.buildings.push(BuildingSlot {
+                verts: buildings.to_vec(),
+                height: noise_gen.rng.range(8, ele.height as i32),
+            })
+        }
     }
 }
 
@@ -123,17 +119,12 @@ struct CityBlock {
 }
 
 struct BuildingSlot {
-    /// x are relative to the city block
-    x: i32,
-    /// z are relative to the city block
-    z: i32,
     height: i32,
-    width: i32,
-    depth: i32,
+    verts: Vec<Point>,
 }
 
 fn spawn_block_wireframes(city_blocks: Res<CityBlocks>, mut debug_shapes: ResMut<DebugShapes>) {
-    if !ENABLE_BLOCK_WIREFRAME && !ENABLE_FLOOR_WIREFRAME {
+    if !ENABLE_BLOCK_WIREFRAME && !ENABLE_FLOOR_WIREFRAME && !ENABLE_BUILDING_WIREFRAME {
         return;
     }
 
@@ -184,28 +175,58 @@ fn spawn_block_wireframes(city_blocks: Res<CityBlocks>, mut debug_shapes: ResMut
             }
         }
         if ENABLE_BUILDING_WIREFRAME {
-            for building in block.buildings.iter() {
-                debug_shapes
-                    .cuboid()
-                    .min_max(
-                        Vec3::new(
-                            ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
-                                + building.x as f32,
-                            0.,
-                            ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
-                                + building.z as f32,
-                        ),
-                        Vec3::new(
-                            ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
-                                + building.x as f32
-                                + building.width as f32,
-                            building.height as f32,
-                            ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
-                                + building.z as f32
-                                + building.depth as f32,
-                        ),
-                    )
-                    .color(Color::rgb_u8(0, 0, 201));
+            // for building in block.buildings.iter() {
+            //     debug_shapes
+            //         .cuboid()
+            //         .min_max(
+            //             Vec3::new(
+            //                 ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
+            //                     + building.x as f32,
+            //                 0.,
+            //                 ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
+            //                     + building.z as f32,
+            //             ),
+            //             Vec3::new(
+            //                 ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
+            //                     + building.x as f32
+            //                     + building.width as f32,
+            //                 building.height as f32,
+            //                 ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
+            //                     + building.z as f32
+            //                     + building.depth as f32,
+            //             ),
+            //         )
+            //         .color(Color::rgb_u8(0, 0, 201));
+            // }
+
+            for slot in block.buildings.iter() {
+                let mut last_point: Option<&Point> = None;
+                for line in slot.verts.iter() {
+                    if last_point.is_none() {
+                        last_point = Some(line);
+                        continue;
+                    }
+                    debug_shapes
+                        .line()
+                        .start_end(
+                            Vec3::new(
+                                ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
+                                    + last_point.unwrap().x.0 as f32,
+                                slot.height as f32,
+                                ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
+                                    + last_point.unwrap().y.0 as f32,
+                            ),
+                            Vec3::new(
+                                ((block.x * CITY_BLOCK_SIZE_X) - (x_length / 2)) as f32
+                                    + line.x.0 as f32,
+                                slot.height as f32,
+                                ((block.z * CITY_BLOCK_SIZE_Z) - (z_length / 2)) as f32
+                                    + line.y.0 as f32,
+                            ),
+                        )
+                        .color(Color::rgb_u8(0, 0, 201));
+                    last_point = Some(line);
+                }
             }
         }
     }
