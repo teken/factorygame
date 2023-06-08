@@ -19,7 +19,10 @@ enum-iterator = "1.4.0"
 rand = "0.8.5"
 rand_pcg = "0.3.1"
 bracket-lib = { version = "0.8.7" }
-voronoi = "0.1.4"
+bevy_vox_mesh = "0.6.0"
+rayon = "1.7.0"
+voronoice = "0.2.0"
+# voronoice = { path = "../voronoice" }
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
